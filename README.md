@@ -1,73 +1,57 @@
 # Зроблено. — збір відміток з коментарів + лендінг учасників
 
-Бот сидить у групі коментарів Telegram-каналу, читає відмітки під постами «День N»
-(✅ зроблено · 🟨 мінімум · ❌ пропуск) і реєстрації під головним постом,
-зберігає все в MongoDB, а лендінг на Angular показує кожного учасника з сіткою 30 днів і текстами відміток.
+Усе на **Cloudflare** (безкоштовно), один проєкт Pages `zrobleno` → **https://zrobleno.pages.dev**:
 
-Пости в канал публікуєш сам. **У тексті кожного поста дня має бути «День N».**
+- **лендінг** (Angular, mobile first) — сам сайт;
+- **бот** — функції цього ж сайту: `/api/tg`, `/api/participants`, `/api/setup`, `/api/health`;
+- **база** — Cloudflare D1 (таблиці створюються автоматично).
 
-Хостинг: **Vercel** (бот: Root Directory `bot`, функції в `bot/api/`) або **Netlify** (один сайт: лендінг + бот, `netlify.toml`).
-
-На Vercel після деплою відкрий `https://<бот>.vercel.app/api/setup?key=<WEBHOOK_SECRET>` → `"ok": true`.
+Бот сидить у групі коментарів каналу, читає відмітки під постами «День N»
+(✅ зроблено · 🟨 мінімум · ❌ пропуск) і реєстрації під головним постом.
+**У тексті кожного поста дня має бути «День N».**
 
 ## Структура
 
 ```
-zrobleno-bot/
-├─ netlify.toml              збірка, функції, маршрути
-├─ netlify/functions/
-│  ├─ tg.mjs                 вебхук Telegram     → /api/tg
-│  ├─ participants.mjs       дані для лендінгу   → /api/participants
-│  └─ setup.mjs              підключити вебхук   → /api/setup?key=WEBHOOK_SECRET
-├─ bot/
-│  ├─ lib/handler.js         уся логіка: коментарі, команди, дані для лендінгу
-│  ├─ lib/parse.js           розпізнавання «День N», ✅🟨❌, реєстрації
-│  ├─ lib/store.js, db.js    MongoDB
-│  ├─ scripts/poll.js        локальний запуск бота без деплою
-│  ├─ scripts/server.js      локальний API для лендінгу (порт 3000)
-│  ├─ test/                  тести (npm test)
-│  └─ .env.example           зразок змінних
-└─ landing/                  Angular, mobile first
+landing/
+├─ src/                    Angular-лендінг
+├─ functions/api/          Cloudflare Pages Functions (бот)
+│  ├─ tg.js                вебхук Telegram       POST /api/tg
+│  ├─ participants.js      дані для лендінгу     GET  /api/participants (кеш 60 с)
+│  ├─ setup.js             підключити вебхук     GET  /api/setup?key=WEBHOOK_SECRET
+│  └─ health.js            перевірка налаштувань GET  /api/health
+└─ server/                 логіка бота
+   ├─ handler.js           коментарі, команди, дані для лендінгу
+   ├─ parse.js             «День N», ✅🟨❌, реєстрація
+   ├─ store.js             D1 (SQLite)
+   ├─ telegram.js          Telegram Bot API
+   └─ test/                тести: npm run test:bot
 ```
 
-## Колекції MongoDB (база `zrobleno`)
+## Налаштування Cloudflare (один раз)
 
-| Колекція | Що зберігає |
+Проєкт Pages `zrobleno`: Root directory `landing`, Build command `npm run build`, Output `dist/landing/browser`.
+
+1. **D1**: Storage & databases → D1 → Create → назва `zrobleno`.
+2. **Привʼязка бази**: Pages `zrobleno` → Settings → Bindings → Add → D1 database → Variable name `DB` → база `zrobleno`.
+3. **Секрети**: Pages `zrobleno` → Settings → Variables and Secrets → Add (тип Secret):
+   `BOT_TOKEN`, `ADMIN_CODE`, `WEBHOOK_SECRET`. Необовʼязково (Text): `TIMEZONE=Europe/Kiev`, `REACT_ON_CHECKIN=1`.
+4. **Redeploy**: Deployments → останній → Retry deployment (привʼязки діють з наступного деплою).
+5. Перевір `https://zrobleno.pages.dev/api/health` → `"ok": true`.
+6. Відкрий `https://zrobleno.pages.dev/api/setup?key=<WEBHOOK_SECRET>` → `"ok": true`.
+7. Telegram: боту `/admin <ADMIN_CODE>` → додай бота **адміном у групу коментарів** → `/status`.
+
+Кожен push у `main` автоматично оновлює сайт і бота.
+
+## Як бот розуміє коментарі
+
+| Що пише учасник | Що робить бот |
 |---|---|
-| `settings` | адміни, група коментарів, (необовʼязково) дата старту |
-| `threads` | пости каналу в групі: «День N» або інформаційний |
-| `participants` | учасник: імʼя, звичка, мінімум, навіщо, прихований чи ні |
-| `checkins` | відмітка: людина + день (унікально), статус, повний текст коментаря |
+| `День 5 ✅ — 15 сторінок` (будь-де) | відмітка ✅ за день 5 |
+| `🟨 — 1 сторінка` під постом «День 5» | відмітка 🟨 за день 5 |
+| кілька відміток за день | рахується остання |
+| редагує коментар | оновлює відмітку і текст |
+| 3–4 рядки під головним постом | профіль: імʼя / звичка / мінімум / навіщо |
+| коментар без значка | ігнорує |
 
-## Деплой на Netlify
-
-1. app.netlify.com → **Add new site → Import an existing project → GitHub → zrobleno-bot**.
-   Налаштування збірки підтягнуться з `netlify.toml` — нічого не міняй.
-2. **Environment variables** (Site configuration → Environment variables):
-
-| Змінна | Значення |
-|---|---|
-| `BOT_TOKEN` | токен від @BotFather |
-| `ADMIN_CODE` | код адміна бота |
-| `WEBHOOK_SECRET` | довгий випадковий рядок |
-| `MONGODB_URI` | рядок підключення MongoDB Atlas (з паролем) |
-| `MONGODB_DB` | `zrobleno` |
-| `TIMEZONE` | `Europe/Kiev` |
-| `REACT_ON_CHECKIN` | `1` (бот ставить 👍 на зараховану відмітку) або `0` |
-
-3. **Deploy**. Після деплою відкрий `https://<сайт>.netlify.app/api/setup?key=<WEBHOOK_SECRET>` → має бути `"ok": true`.
-4. У Telegram: напиши боту `/admin <ADMIN_CODE>`, додай його **адміном у групу коментарів**, перевір `/status`.
-5. Лендінг: `https://<сайт>.netlify.app`.
-
-MongoDB Atlas → Network Access → має бути `0.0.0.0/0` (у Netlify немає фіксованих IP).
-
-## Локально
-
-```powershell
-cd D:\zrobleno-bot\bot
-copy .env.example .env      # заповни значення
-npm install
-npm test
-npm run poll                # бот працює з ноутбука (вебхук на цей час вимикається;
-                            # після тестів знову відкрий /api/setup на Netlify)
-```
+Команди: `/status`, `/date 10.11.2026` (необовʼязково), `/hideme`, `/showme`, `/help`.

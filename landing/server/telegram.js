@@ -1,7 +1,7 @@
-// Мінімальний клієнт Telegram Bot API (вбудований fetch, Node 18+)
+// Мінімальний клієнт Telegram Bot API
 
-export function tg(token = process.env.BOT_TOKEN) {
-  if (!token) throw new Error("Немає BOT_TOKEN у змінних середовища (.env)");
+export function tg(token) {
+  if (!token) throw new Error("Немає BOT_TOKEN (Cloudflare → Settings → Variables and Secrets)");
   const base = `https://api.telegram.org/bot${token}/`;
   async function call(method, body = {}) {
     const res = await fetch(base + method, {

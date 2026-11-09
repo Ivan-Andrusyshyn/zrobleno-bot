@@ -6,9 +6,9 @@ import {
   displayName, todayYmd, dayNumber, parseDate,
 } from "./parse.js";
 
-const TIMEZONE = () => process.env.TIMEZONE || "Europe/Kiev";
-// Реакція 👍 на зараховану відмітку. Вимкнути: REACT_ON_CHECKIN=0 у .env
-const REACT = () => process.env.REACT_ON_CHECKIN !== "0";
+const TIMEZONE = (env) => env.TIMEZONE || "Europe/Kiev";
+// Реакція 👍 на зараховану відмітку. Вимкнути: змінна REACT_ON_CHECKIN = 0
+const REACT = (env) => env.REACT_ON_CHECKIN !== "0";
 
 export const BOT_COMMANDS = [
   { command: "status", description: "Скільки учасників і відміток" },
@@ -18,16 +18,16 @@ export const BOT_COMMANDS = [
 ];
 
 // ---------- Дані для лендінгу ----------
-async function currentDay(db, s) {
+async function currentDay(db, s, env) {
   if (s.startDate) {
-    const n = dayNumber(s.startDate, todayYmd(new Date(), TIMEZONE()));
+    const n = dayNumber(s.startDate, todayYmd(new Date(), TIMEZONE(env)));
     return Math.max(0, Math.min(n, TOTAL_DAYS + 1));
   }
   return db.maxDay();
 }
 
-export async function participantsPayload() {
-  const db = await store();
+export async function participantsPayload(env) {
+  const db = await store(env.DB);
   const s = await db.all();
   const { people, marks } = await db.participantsWithCheckins();
   const days = new Map(people.map((p) => [p.userId, Array(TOTAL_DAYS).fill(null)]));
@@ -36,10 +36,10 @@ export async function participantsPayload() {
     const arr = days.get(m.userId);
     if (!arr || m.day < 1 || m.day > TOTAL_DAYS) continue;
     arr[m.day - 1] = m.status;
-    if (m.text) comments.get(m.userId).push({ day: m.day, status: m.status, text: m.text, at: new Date(m.updatedAt).toISOString() });
+    if (m.text) comments.get(m.userId).push({ day: m.day, status: m.status, text: m.text, at: m.updatedAt });
   }
   return {
-    challenge: { startDate: s.startDate || null, currentDay: await currentDay(db, s), totalDays: TOTAL_DAYS },
+    challenge: { startDate: s.startDate || null, currentDay: await currentDay(db, s, env), totalDays: TOTAL_DAYS },
     participants: people.map((p, i) => ({
       id: i + 1, // Telegram ID назовні не віддаємо
       name: p.name || p.tgName || "Учасник",
@@ -53,8 +53,8 @@ export async function participantsPayload() {
 }
 
 // ---------- Оновлення від Telegram ----------
-export async function handleUpdate(u, api = tg()) {
-  const db = await store();
+export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
+  const db = await store(env.DB);
 
   // Бота зробили адміном у групі коментарів
   if (u.my_chat_member) {
@@ -73,7 +73,7 @@ export async function handleUpdate(u, api = tg()) {
   if (!m) return;
 
   if (m.chat.type === "private") {
-    if (m.text?.startsWith("/")) await handleCommand(m, db, api);
+    if (m.text?.startsWith("/")) await handleCommand(m, db, api, env);
     return;
   }
 
@@ -102,7 +102,7 @@ export async function handleUpdate(u, api = tg()) {
     if (!day) return;
     await db.touchParticipant(m.from.id, tgName);
     await db.saveCheckin(m.from.id, day, status, parseNote(text), text.slice(0, 1000), m.message_id);
-    if (u.message && REACT()) {
+    if (u.message && REACT(env)) {
       await api.call("setMessageReaction", {
         chat_id: m.chat.id, message_id: m.message_id, reaction: [{ type: "emoji", emoji: "👍" }],
       }).catch(() => {});
@@ -119,7 +119,7 @@ export async function handleUpdate(u, api = tg()) {
 }
 
 // ---------- Команди в особистому чаті ----------
-async function handleCommand(m, db, api) {
+async function handleCommand(m, db, api, env) {
   const [cmdRaw, ...args] = m.text.trim().split(/\s+/);
   const cmd = cmdRaw.split("@")[0].toLowerCase();
   const arg = args.join(" ");
@@ -139,7 +139,7 @@ async function handleCommand(m, db, api) {
       await db.setHidden(m.from.id, false);
       return reply("Готово, ти знову на лендінгу ✅");
     case "/admin":
-      if (!process.env.ADMIN_CODE || arg !== process.env.ADMIN_CODE) return reply("Невірний код.");
+      if (!env.ADMIN_CODE || arg !== env.ADMIN_CODE) return reply("Невірний код.");
       if (!isAdmin) await db.set({ admins: [...admins, String(m.from.id)] });
       return reply("Ти адмін бота ✅\n\nДалі: додай мене адміном у групу коментарів каналу, потім /status");
   }
@@ -148,7 +148,7 @@ async function handleCommand(m, db, api) {
 
   switch (cmd) {
     case "/status": {
-      const day = await currentDay(db, s);
+      const day = await currentDay(db, s, env);
       const c = await db.counts(day);
       return reply([
         `Група коментарів: ${s.groupId ? (s.groupTitle || s.groupId) + " ✅" : "не підключено ❌ (додай мене адміном)"}`,

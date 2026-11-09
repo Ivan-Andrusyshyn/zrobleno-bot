@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseDay, parseStatus, parseNote, parseRegistration, displayName, dayNumber, todayYmd, parseDate } from "../lib/parse.js";
+import { parseDay, parseStatus, parseNote, parseRegistration, displayName, dayNumber, todayYmd, parseDate } from "../parse.js";
 
 test("номер дня з тексту", () => {
   assert.equal(parseDay("День 5 ✅ — прочитано 15 сторінок"), 5);
