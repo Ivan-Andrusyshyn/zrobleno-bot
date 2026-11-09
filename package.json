@@ -1,0 +1,9 @@
+{
+  "name": "zrobleno",
+  "private": true,
+  "type": "module",
+  "description": "Netlify: залежності функцій бота (MongoDB). Сам бот — у папці bot/, лендінг — у landing/.",
+  "dependencies": {
+    "mongodb": "^7.0.0"
+  }
+}

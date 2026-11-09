@@ -53,7 +53,7 @@ import { STATUS_ICON, cleanText, completion, currentStreak } from './models';
           </a>
         </li>
       } @empty {
-        <li class="note">Нікого не знайдено.</li>
+        <li class="note">{{ q() ? 'Нікого не знайдено.' : 'Поки що немає учасників — вони зʼявляться після першої відмітки.' }}</li>
       }
     </ul>
 

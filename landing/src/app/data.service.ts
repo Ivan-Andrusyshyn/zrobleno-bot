@@ -1,7 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { API_BASE } from './config';
+import { API_BASE, USE_DEMO } from './config';
 import { DayStatus, Participant, ParticipantsResponse } from './models';
 
 @Injectable({ providedIn: 'root' })
@@ -16,7 +16,7 @@ export class DataService {
   readonly challenge = computed(() => this.data()?.challenge ?? { startDate: null, currentDay: 0, totalDays: 30 });
 
   async load(): Promise<void> {
-    if (!API_BASE) {
+    if (USE_DEMO) {
       this.isDemo.set(true);
       this.data.set(demoData());
       return;
