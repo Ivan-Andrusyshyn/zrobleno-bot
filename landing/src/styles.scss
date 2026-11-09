@@ -1,0 +1,10 @@
+:root {
+  --bg: #000;
+  --card: #141414;
+  --muted: #a3a3a3;
+  --accent: #ff6a2b;
+  color-scheme: dark;
+}
+* { -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; background: var(--bg); color: #fff; }
+body { font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
