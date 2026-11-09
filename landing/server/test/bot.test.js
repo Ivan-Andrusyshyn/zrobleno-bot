@@ -76,8 +76,13 @@ test("функції: секрет вебхука, setup, health", async () => {
 
   assert.equal((await setupFn({ request: new Request("https://x/api/setup?key=bad"), env })).status, 403);
 
-  const h = await (await healthFn({ env })).json();
-  assert.deepEqual(h, { ok: true, db: true, botToken: true, webhookSecret: true, adminCode: true });
-  const h2 = await (await healthFn({ env: { ...env, BOT_TOKEN: undefined } })).json();
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ ok: true, result: { url: "https://zrobleno.pages.dev/api/tg", pending_update_count: 0 } });
+  const h = await (await healthFn({ env, request: new Request("https://zrobleno.pages.dev/api/health") })).json();
+  globalThis.fetch = realFetch;
+  assert.equal(h.ok, true);
+  assert.equal(h.webhook.connected, true);
+  assert.equal(h.settings.admins, 1);
+  const h2 = await (await healthFn({ env: { ...env, BOT_TOKEN: undefined }, request: new Request("https://x/api/health") })).json();
   assert.equal(h2.ok, false);
 });
