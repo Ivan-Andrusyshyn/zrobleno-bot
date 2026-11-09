@@ -84,7 +84,13 @@ export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
 
   // Пост каналу автоматично зʼявився в групі → запамʼятовуємо, чи це «День N»
   if (m.is_automatic_forward) {
-    const day = parseDay(text);
+    // День беремо з тексту («День 5»), а якщо тексту немає (банер без підпису) —
+    // рахуємо за датою публікації від дати старту (/date)
+    let day = parseDay(text);
+    if (!day && s.startDate && m.date) {
+      const n = dayNumber(s.startDate, todayYmd(new Date(m.date * 1000), TIMEZONE(env)));
+      if (n >= 1 && n <= TOTAL_DAYS) day = n;
+    }
     await db.saveThread(m.chat.id, m.message_id, day ? "day" : "info", day);
     return;
   }
@@ -112,7 +118,7 @@ export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
 
   // Реєстрація під головним постом (або будь-де, якщо пост невідомий і є 3+ рядки)
   const reg = parseRegistration(text);
-  if (reg && (thread?.kind === "info" || (!thread && reg.minimum))) {
+  if (reg && (thread?.kind === "info" || reg.minimum)) {
     await db.touchParticipant(m.from.id, tgName);
     await db.saveProfile(m.from.id, reg);
   }
@@ -182,7 +188,7 @@ const HELP_USER = `Я бот челенджу «Зроблено.» 👋
 
 const HELP_ADMIN = `Команди адміна:
 /status — група, поточний день, скільки учасників і відміток
-/date 10.11.2026 — задати дату старту (необовʼязково; інакше день береться з постів «День N»)
+/date 10.11.2026 — дата старту: тоді пости дня можна публікувати без тексту «День N» (день рахується за датою)
 /date off — рахувати день за постами
 
-Важливо: у тексті кожного поста дня має бути «День N».`;
+Якщо дату старту не задано, у тексті кожного поста дня має бути «День N».`;
