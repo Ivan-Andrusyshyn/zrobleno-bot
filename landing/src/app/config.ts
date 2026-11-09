@@ -1,6 +1,6 @@
 /**
  * Звідки лендінг бере дані.
- * '' — з того ж сайту (/api/participants на Netlify). Для локальної розробки: 'http://localhost:3000'.
+ * '' — з того ж сайту (Netlify). Для бота на Vercel: 'https://<бот>.vercel.app'. Локально: 'http://localhost:3000'.
  */
 export const API_BASE = '';
 
