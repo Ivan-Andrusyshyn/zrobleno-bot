@@ -27,7 +27,16 @@ export async function onRequestGet({ env, request }) {
   try {
     const { results } = await env.DB.prepare("SELECT key, value FROM settings").all();
     const s = Object.fromEntries(results.map((x) => [x.key, JSON.parse(x.value)]));
-    settings = { admins: (s.admins || []).length, group: s.groupTitle || null };
+    const c = await env.DB.batch([
+      env.DB.prepare("SELECT kind, COUNT(*) AS n FROM threads GROUP BY kind"),
+      env.DB.prepare("SELECT COUNT(*) AS n FROM participants"),
+      env.DB.prepare("SELECT COUNT(*) AS n FROM checkins"),
+    ]);
+    settings = {
+      admins: (s.admins || []).length, group: s.groupTitle || null, startDate: s.startDate || null,
+      posts: Object.fromEntries(c[0].results.map((r) => [r.kind, r.n])),
+      participants: c[1].results[0].n, checkins: c[2].results[0].n,
+    };
   } catch {}
 
   return Response.json({

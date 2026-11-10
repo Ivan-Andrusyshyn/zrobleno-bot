@@ -40,7 +40,7 @@ export async function store(db) {
         .bind(String(chatId), msgId, kind, num ?? null, now()).run();
     },
     async thread(chatId, msgId) {
-      return db.prepare("SELECT kind, num FROM threads WHERE chat_id = ? AND msg_id = ?").bind(String(chatId), msgId).first();
+      return db.prepare("SELECT kind, num, created_at FROM threads WHERE chat_id = ? AND msg_id = ?").bind(String(chatId), msgId).first();
     },
     async maxDay() {
       const r = await db.prepare("SELECT MAX(num) AS d FROM threads WHERE kind = 'day'").first();

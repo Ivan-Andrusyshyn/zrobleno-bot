@@ -104,8 +104,17 @@ export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
   // Відмітка дня
   const status = parseStatus(text);
   if (status) {
-    const day = parseDay(text) ?? (thread?.kind === "day" ? thread.num : null);
-    if (!day) return;
+    let day = parseDay(text) ?? (thread?.kind === "day" ? thread.num : null);
+    // Запасний варіант: день за датою поста (або коментаря, якщо пост боту невідомий) від дати старту
+    if (!day && s.startDate) {
+      const when = thread?.created_at ? new Date(thread.created_at) : new Date(m.date * 1000);
+      const n = dayNumber(s.startDate, todayYmd(when, TIMEZONE(env)));
+      if (n >= 1 && n <= TOTAL_DAYS) day = n;
+    }
+    if (!day) {
+      console.log("checkin without day", { user: m.from.id, thread: thread?.kind ?? null, startDate: s.startDate ?? null });
+      return;
+    }
     await db.touchParticipant(m.from.id, tgName);
     await db.saveCheckin(m.from.id, day, status, parseNote(text), text.slice(0, 1000), m.message_id);
     if (u.message && REACT(env)) {

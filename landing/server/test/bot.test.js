@@ -84,6 +84,18 @@ test("банер без підпису: день за датою публіка�
   assert.equal(p2.habit, "Біг");
 });
 
+test("пост, який бот не розпізнав як день, + /date → день за датою поста", async () => {
+  const t = Math.floor(Date.parse("2026-11-10T08:00:00Z") / 1000);
+  // пост побачено, коли дати старту ще не було → 'info'
+  const saved = env.DB;
+  await upd("message", { message_id: 400, date: t, chat: { id: G, type: "supergroup" }, is_automatic_forward: true, sender_chat: { id: -1001, type: "channel" }, photo: [{}] });
+  // невідомий пост (опубліковано до підключення бота) — день за датою коментаря
+  await upd("message", { message_id: 501, message_thread_id: 999, date: t, chat: { id: G, type: "supergroup" }, from: { id: 12, is_bot: false, first_name: "Тарас" }, text: "✅" });
+  const p = (await participantsPayload(env)).participants.find((x) => x.name === "Тарас");
+  assert.equal(p.days[0], "done");
+  assert.equal(saved, env.DB);
+});
+
 test("функції: секрет вебхука, setup, health", async () => {
   const req = (secret) => new Request("https://zrobleno.pages.dev/api/tg", {
     method: "POST", headers: { "x-telegram-bot-api-secret-token": secret }, body: "{}",
@@ -102,6 +114,7 @@ test("функції: секрет вебхука, setup, health", async () => {
   assert.equal(h.ok, true);
   assert.equal(h.webhook.connected, true);
   assert.equal(h.settings.admins, 1);
+  assert.ok(h.settings.checkins > 0);
   const h2 = await (await healthFn({ env: { ...env, BOT_TOKEN: undefined }, request: new Request("https://x/api/health") })).json();
   assert.equal(h2.ok, false);
 });
