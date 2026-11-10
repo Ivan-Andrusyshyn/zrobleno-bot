@@ -8,11 +8,11 @@ import { DayStatus } from './models';
     <ol class="grid" [class.big]="big()" [attr.aria-label]="'Прогрес: ' + summary()">
       @for (s of cells(); track $index) {
         <li class="cell" [class]="s.cls" [attr.title]="'День ' + ($index + 1) + ': ' + s.label">
-          @if (s.cls === 'done') {
+          @if (s.cls.startsWith('done') || s.cls.startsWith('min')) {
             <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10.5l3.2 3.2L15 7" /></svg>
-          } @else if (s.cls === 'miss') {
+          } @else if (s.cls.startsWith('miss')) {
             <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6.5 6.5l7 7M13.5 6.5l-7 7" /></svg>
-          } @else if (big() && !s.cls.startsWith('min')) {
+          } @else if (big()) {
             <span class="n">{{ $index + 1 }}</span>
           }
         </li>
@@ -27,7 +27,8 @@ import { DayStatus } from './models';
     .cell svg { width: 70%; height: 70%; fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
     .done { background: var(--accent); }
     .done svg { stroke: #000; }
-    .min { background: linear-gradient(90deg, var(--accent) 50%, #3a1d10 50%); }
+    .min { background: var(--min, #ffc83d); }
+    .min svg { stroke: #000; }
     .miss { background: #262626; }
     .miss svg { stroke: #8a8a8a; }
     .empty { background: #141414; box-shadow: inset 0 0 0 1px #2a2a2a; }
@@ -47,7 +48,7 @@ export class DayGrid {
     return this.days().map((s, i) => {
       const day = i + 1;
       let cls = s ?? (day < cur ? 'empty' : day === cur ? 'empty' : 'future');
-      const label = s === 'done' ? 'зроблено' : s === 'min' ? 'мінімум' : s === 'miss' ? 'пропуск' : day <= cur ? 'без відмітки' : 'попереду';
+      const label = s === 'done' ? 'зроблено' : s === 'min' ? 'мінімум — зараховано ✓' : s === 'miss' ? 'пропуск' : day <= cur ? 'без відмітки' : 'попереду';
       if (day === cur) cls += ' today';
       return { cls, label };
     });
