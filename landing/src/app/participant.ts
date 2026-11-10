@@ -2,7 +2,7 @@ import { Component, computed, inject, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { DataService } from './data.service';
 import { DayGrid } from './day-grid';
-import { STATUS_ICON, cleanText, completion, currentStreak } from './models';
+import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './models';
 
 @Component({
   selector: 'app-participant',
@@ -17,7 +17,7 @@ import { STATUS_ICON, cleanText, completion, currentStreak } from './models';
       </header>
 
       <section class="stats">
-        <div class="stat"><b>{{ streak() }}</b><span>серія днів</span></div>
+        <div class="stat"><b>@if (streak() > 0) {🔥 }{{ streak() }}</b><span>{{ daysWord(streak()) }} поспіль</span></div>
         <div class="stat"><b>{{ pct() }}%</b><span>виконано</span></div>
         <div class="stat"><b>{{ count('done') }}/{{ count('min') }}/{{ count('miss') }}</b><span>✅ / 🟨 / ❌</span></div>
       </section>
@@ -78,6 +78,7 @@ import { STATUS_ICON, cleanText, completion, currentStreak } from './models';
   `,
 })
 export class ParticipantPage {
+  protected readonly daysWord = daysWord;
   private data = inject(DataService);
   id = input.required<string>();
 

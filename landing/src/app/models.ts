@@ -59,3 +59,11 @@ export function cleanText(text: string): string {
     .trim();
   return t || text.trim();
 }
+
+/** 1 день, 2 дні, 5 днів */
+export function daysWord(n: number): string {
+  const a = n % 10, b = n % 100;
+  if (a === 1 && b !== 11) return 'день';
+  if (a >= 2 && a <= 4 && (b < 12 || b > 14)) return 'дні';
+  return 'днів';
+}

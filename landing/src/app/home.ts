@@ -2,7 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { DataService } from './data.service';
 import { DayGrid } from './day-grid';
-import { STATUS_ICON, cleanText, completion, currentStreak } from './models';
+import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './models';
 
 @Component({
   selector: 'app-home',
@@ -37,8 +37,8 @@ import { STATUS_ICON, cleanText, completion, currentStreak } from './models';
                 <h2>{{ p.name }}</h2>
                 <p>{{ p.habit }}</p>
               </div>
-              <div class="streak" [attr.aria-label]="'Серія ' + p.streak + ' днів'">
-                <b>{{ p.streak }}</b><span>серія</span>
+              <div class="streak" [attr.aria-label]="p.streak + ' ' + daysWord(p.streak) + ' поспіль'">
+                <b>@if (p.streak > 0) {🔥 }{{ p.streak }}</b><span>{{ daysWord(p.streak) }}<br />поспіль</span>
               </div>
             </div>
             <app-day-grid [days]="p.days" [currentDay]="day()" />
@@ -87,7 +87,7 @@ import { STATUS_ICON, cleanText, completion, currentStreak } from './models';
     .who p { margin: 2px 0 0; color: var(--muted); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .streak { text-align: center; display: grid; }
     .streak b { color: var(--accent); font-size: 22px; font-weight: 800; line-height: 1; }
-    .streak span { font-size: 11px; color: var(--muted); }
+    .streak span { font-size: 11px; color: var(--muted); line-height: 1.2; margin-top: 2px; }
     .bar { height: 4px; border-radius: 2px; background: #262626; overflow: hidden; }
     .bar i { display: block; height: 100%; background: var(--accent); }
     .meta { margin: 0; font-size: 13px; color: var(--muted); }
@@ -111,6 +111,7 @@ import { STATUS_ICON, cleanText, completion, currentStreak } from './models';
   `,
 })
 export class Home {
+  protected readonly daysWord = daysWord;
   data = inject(DataService);
   q = signal('');
   icon = STATUS_ICON;
