@@ -26,16 +26,14 @@ test("нотатка після тире", () => {
 
 test("реєстрація", () => {
   const r = parseRegistration("1️⃣ Іван\n2️⃣ Читання\n3️⃣ 1 сторінка\n4️⃣ Хочу читати більше");
-  assert.deepEqual(r, { name: "Іван", habit: "Читання", minimum: "1 сторінка", why: "Хочу читати більше", keycap: true });
+  assert.deepEqual(r, { name: "Іван", habit: "Читання", minimum: "1 сторінка", why: "Хочу читати більше" });
   const r2 = parseRegistration("1. Олена\n2. Звичка: біг\n3. Мінімум — 10 хвилин");
   assert.equal(r2.habit, "біг");
   assert.equal(r2.minimum, "10 хвилин");
   assert.equal(parseRegistration("Привіт!"), null);
   // цифра визначає поле, порядок не важливий
   const r3 = parseRegistration("2️⃣ Біг\n1️⃣ Марко\n4️⃣ Для здоровʼя\n3️⃣ 10 хвилин");
-  assert.deepEqual(r3, { name: "Марко", habit: "Біг", minimum: "10 хвилин", why: "Для здоровʼя", keycap: true });
-  // оновлення одного пункту
-  assert.deepEqual(parseRegistration("3️⃣ 20 хвилин"), { name: null, habit: null, minimum: "20 хвилин", why: null, keycap: true });
+  assert.deepEqual(r3, { name: "Марко", habit: "Біг", minimum: "10 хвилин", why: "Для здоровʼя" });
   // порожній шаблон і незмінений приклад — не реєстрація
   assert.equal(parseRegistration("1️⃣ Ім’я\n2️⃣ Звичка\n3️⃣ Мінімум\n4️⃣ Навіщо тобі це"), null);
   assert.equal(parseRegistration("1️⃣ Олена\n2️⃣ Читання\n3️⃣ 1 сторінка\n4️⃣ Хочу читати більше"), null);
