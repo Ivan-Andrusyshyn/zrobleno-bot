@@ -37,7 +37,7 @@ test("повний сценарій на D1", async () => {
   await fwd(100, "Вітаю у «Зроблено.»!");
   await fwd(200, "День 3 з 30");
 
-  await comment("message", 101, 100, olena, "1️⃣ Олена\n2️⃣ Читання\n3️⃣ 1 сторінка\n4️⃣ Хочу читати більше");
+  await comment("message", 101, 100, olena, "1️⃣ Олена\n2️⃣ Читання\n3️⃣ 2 сторінки\n4️⃣ Хочу читати більше");
   await comment("message", 201, 200, olena, "✅ — 15 сторінок\nДуже затягнуло");
   assert.ok(sent.some((s) => s.method === "setMessageReaction" && s.message_id === 201));
   await comment("edited_message", 201, 200, olena, "🟨 — лише 1 сторінка");
@@ -49,7 +49,7 @@ test("повний сценарій на D1", async () => {
   assert.equal(data.challenge.currentDay, 3);
   assert.equal(data.participants.length, 2);
   const [o, a] = data.participants;
-  assert.deepEqual([o.name, o.habit, o.minimum, o.days[2]], ["Олена", "Читання", "1 сторінка", "min"]);
+  assert.deepEqual([o.name, o.habit, o.minimum, o.days[2]], ["Олена", "Читання", "2 сторінки", "min"]);
   assert.equal(o.comments[0].text, "🟨 — лише 1 сторінка");
   assert.deepEqual([a.name, a.days[1], a.days[2]], ["Андрій", "miss", null]);
 

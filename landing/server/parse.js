@@ -33,18 +33,44 @@ export function parseNote(text) {
 }
 
 /**
- * Реєстрація під головним постом:
+ * Реєстрація під постом:
  * 1️⃣ Імʼя  2️⃣ Звичка  3️⃣ Мінімум  4️⃣ Навіщо
+ * Якщо рядки пронумеровані — поле визначає цифра (порядок не важливий),
+ * а рядки без цифри ігноруються. Порожній шаблон або незмінений приклад
+ * не вважаються реєстрацією.
  */
+const LABEL_RE = /^(імʼя|ім'я|ім’я|имя|звичка|мінімум|навіщо( тобі)?( це)?)\s*[:—–-]?\s*/iu;
+const NUM_RE = /^\s*(\d)(?:\uFE0F?\u20E3|[.)])\s*/u;
+const EXAMPLE = ["олена", "читання", "1 сторінка"];
+
 export function parseRegistration(text) {
-  const lines = (text || "")
-    .split(/\n+/)
-    .map((l) => l.replace(/^\s*(\d️?⃣|\d+[.)]|[-•*])\s*/u, "").trim())
-    .map((l) => l.replace(/^(імʼя|ім'я|ім’я|звичка|мінімум|навіщо)\s*[:—–-]\s*/iu, "").trim())
-    .filter(Boolean);
-  if (lines.length < 2) return null;
+  const raw = (text || "").split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  const numbered = raw.filter((l) => NUM_RE.test(l));
+  const fields = [null, null, null, null];
+  let labelsOnly = 0;
+  const clean = (l) => {
+    const before = l.replace(/^\s*[-•*]\s*/u, "").trim();
+    const after = before.replace(LABEL_RE, "").trim();
+    if (!after && before) labelsOnly++;
+    return after;
+  };
+  if (numbered.length >= 2) {
+    for (const l of numbered) {
+      const i = Number(l.match(NUM_RE)[1]) - 1;
+      const v = clean(l.replace(NUM_RE, ""));
+      if (i >= 0 && i < 4 && v && !fields[i]) fields[i] = v;
+    }
+  } else {
+    raw.map(clean).filter(Boolean).slice(0, 4).forEach((v, i) => (fields[i] = v));
+    const rest = raw.map(clean).filter(Boolean).slice(4);
+    if (rest.length && fields[3]) fields[3] += " " + rest.join(" ");
+  }
+  if (labelsOnly >= 2) return null; // скопійовано порожній шаблон
+  if (!fields[0] || !fields[1]) return null;
+  const low = fields.slice(0, 3).map((f) => (f || "").toLowerCase());
+  if (low.every((f, i) => f === EXAMPLE[i])) return null; // незмінений приклад
   const cut = (s) => (s ? s.slice(0, 120) : null);
-  return { name: cut(lines[0]), habit: cut(lines[1]), minimum: cut(lines[2]), why: cut(lines.slice(3).join(" ")) };
+  return { name: cut(fields[0]), habit: cut(fields[1]), minimum: cut(fields[2]), why: cut(fields[3]) };
 }
 
 /** Імʼя для лендінгу: «Іван А.» */
