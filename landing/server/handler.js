@@ -130,7 +130,7 @@ export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
 
   // Реєстрація під головним постом (або будь-де, якщо є 3+ рядки)
   const reg = parseRegistration(text);
-  if (reg && (thread?.kind === "info" || reg.minimum)) {
+  if (reg && (thread?.kind === "info" || reg.minimum || reg.keycap)) {
     await db.touchParticipant(m.from.id, tgName);
     await db.saveProfile(m.from.id, reg);
     return;

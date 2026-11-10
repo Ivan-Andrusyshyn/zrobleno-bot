@@ -53,7 +53,7 @@ export async function store(db) {
       ).bind(userId, tgName, now()).run();
     },
     async saveProfile(userId, p) {
-      await db.prepare("UPDATE participants SET name = ?, habit = ?, minimum = ?, why = ? WHERE user_id = ?")
+      await db.prepare("UPDATE participants SET name = COALESCE(?, name), habit = COALESCE(?, habit), minimum = COALESCE(?, minimum), why = COALESCE(?, why) WHERE user_id = ?")
         .bind(p.name ?? null, p.habit ?? null, p.minimum ?? null, p.why ?? null, userId).run();
     },
     async setHidden(userId, hidden) {

@@ -37,10 +37,11 @@ test("повний сценарій на D1", async () => {
   await fwd(100, "Вітаю у «Зроблено.»!");
   await fwd(200, "День 3 з 30");
 
-  await comment("message", 101, 100, olena, "1️⃣ Олена\n2️⃣ Читання\n3️⃣ 2 сторінки\n4️⃣ Хочу читати більше");
+  await comment("message", 101, 100, olena, "1️⃣ Олена\n2️⃣ Читання\n3️⃣ 5 сторінок\n4️⃣ Хочу читати більше");
   await comment("message", 201, 200, olena, "✅ — 15 сторінок\nДуже затягнуло");
   assert.ok(sent.some((s) => s.method === "setMessageReaction" && s.message_id === 201));
   await comment("edited_message", 201, 200, olena, "🟨 — лише 1 сторінка");
+  await comment("message", 204, 200, olena, "3️⃣ 2 сторінки");
   await comment("message", 202, 200, andrii, "День 2 ❌ захворів");
   await comment("message", 203, 200, { id: 9, is_bot: false, first_name: "Flood" }, "класний пост!");
   await upd("message", { message_id: 1, message_thread_id: 200, chat: { id: -1009, type: "supergroup" }, from: andrii, text: "День 3 ✅" });

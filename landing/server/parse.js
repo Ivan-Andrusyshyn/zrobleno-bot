@@ -54,7 +54,9 @@ export function parseRegistration(text) {
     if (!after && before) labelsOnly++;
     return after;
   };
-  if (numbered.length >= 2) {
+  // з емодзі-цифрами (1️⃣…4️⃣) можна оновити й один пункт
+  const keycap = numbered.some((l) => /^\s*\d\uFE0F?\u20E3/u.test(l));
+  if (numbered.length >= 2 || keycap) {
     for (const l of numbered) {
       const i = Number(l.match(NUM_RE)[1]) - 1;
       const v = clean(l.replace(NUM_RE, ""));
@@ -66,11 +68,13 @@ export function parseRegistration(text) {
     if (rest.length && fields[3]) fields[3] += " " + rest.join(" ");
   }
   if (labelsOnly >= 2) return null; // скопійовано порожній шаблон
-  if (!fields[0] || !fields[1]) return null;
+  if (keycap) {
+    if (!fields.some(Boolean)) return null;
+  } else if (!fields[0] || !fields[1]) return null;
   const low = fields.slice(0, 3).map((f) => (f || "").toLowerCase());
   if (low.every((f, i) => f === EXAMPLE[i])) return null; // незмінений приклад
   const cut = (s) => (s ? s.slice(0, 120) : null);
-  return { name: cut(fields[0]), habit: cut(fields[1]), minimum: cut(fields[2]), why: cut(fields[3]) };
+  return { name: cut(fields[0]), habit: cut(fields[1]), minimum: cut(fields[2]), why: cut(fields[3]), keycap };
 }
 
 /** Імʼя для лендінгу: «Іван А.» */
