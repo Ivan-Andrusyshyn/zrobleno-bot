@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, isDevMode, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { API_BASE, USE_DEMO } from './config';
@@ -16,7 +16,8 @@ export class DataService {
   readonly challenge = computed(() => this.data()?.challenge ?? { startDate: null, currentDay: 0, totalDays: 30 });
 
   async load(): Promise<void> {
-    if (USE_DEMO) {
+    const demoParam = typeof location !== 'undefined' && new URLSearchParams(location.search).has('demo');
+    if (USE_DEMO || isDevMode() || demoParam) {
       this.isDemo.set(true);
       this.data.set(demoData());
       return;
