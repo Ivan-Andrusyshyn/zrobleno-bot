@@ -36,6 +36,7 @@ export async function onRequestGet({ env, request }) {
       admins: (s.admins || []).length, group: s.groupTitle || null, startDate: s.startDate || null,
       posts: Object.fromEntries(c[0].results.map((r) => [r.kind, r.n])),
       participants: c[1].results[0].n, checkins: c[2].results[0].n,
+      lastSkippedComment: s.lastSkip || null,
     };
   } catch {}
 

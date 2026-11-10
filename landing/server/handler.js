@@ -52,6 +52,11 @@ export async function participantsPayload(env) {
   };
 }
 
+// Запамʼятати, чому коментар не зараховано (видно в /api/health)
+async function skip(db, reason, m) {
+  await db.set({ lastSkip: { reason, at: new Date().toISOString(), text: (m.text || m.caption || "").slice(0, 40) } }).catch(() => {});
+}
+
 // ---------- Оновлення від Telegram ----------
 export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
   const db = await store(env.DB);
@@ -78,7 +83,7 @@ export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
   }
 
   const s = await db.all();
-  if (s.groupId && String(m.chat.id) !== String(s.groupId)) return; // чужа група
+  if (s.groupId && String(m.chat.id) !== String(s.groupId)) return skip(db, "повідомлення з іншої групи", m);
 
   const text = m.text || m.caption || "";
 
@@ -95,7 +100,8 @@ export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
     return;
   }
 
-  if (!m.from || m.from.is_bot || m.sender_chat) return; // боти й пости від імені каналу
+  if (m.sender_chat) return skip(db, "коментар від імені каналу або анонімного адміна — автор невідомий", m);
+  if (!m.from || m.from.is_bot) return;
 
   const rootId = m.message_thread_id ?? m.reply_to_message?.message_id;
   const thread = rootId ? await db.thread(m.chat.id, rootId) : null;
@@ -111,10 +117,7 @@ export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
       const n = dayNumber(s.startDate, todayYmd(when, TIMEZONE(env)));
       if (n >= 1 && n <= TOTAL_DAYS) day = n;
     }
-    if (!day) {
-      console.log("checkin without day", { user: m.from.id, thread: thread?.kind ?? null, startDate: s.startDate ?? null });
-      return;
-    }
+    if (!day) return skip(db, `не вдалося визначити день (пост: ${thread?.kind ?? "невідомий"}, старт: ${s.startDate ?? "не задано"})`, m);
     await db.touchParticipant(m.from.id, tgName);
     await db.saveCheckin(m.from.id, day, status, parseNote(text), text.slice(0, 1000), m.message_id);
     if (u.message && REACT(env)) {
@@ -125,12 +128,14 @@ export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
     return;
   }
 
-  // Реєстрація під головним постом (або будь-де, якщо пост невідомий і є 3+ рядки)
+  // Реєстрація під головним постом (або будь-де, якщо є 3+ рядки)
   const reg = parseRegistration(text);
   if (reg && (thread?.kind === "info" || reg.minimum)) {
     await db.touchParticipant(m.from.id, tgName);
     await db.saveProfile(m.from.id, reg);
+    return;
   }
+  return skip(db, "немає значка ✅ / 🟨 / ❌", m);
 }
 
 // ---------- Команди в особистому чаті ----------

@@ -96,6 +96,15 @@ test("пост, який бот не розпізнав як день, + /date �
   assert.equal(saved, env.DB);
 });
 
+test("причина пропуску коментаря записується", async () => {
+  await upd("message", { message_id: 601, message_thread_id: 200, date: 0, chat: { id: G, type: "supergroup" }, sender_chat: { id: -1001, type: "channel" }, text: "✅ від каналу" });
+  let s = await (await import("../store.js")).store(env.DB).then((d) => d.all());
+  assert.match(s.lastSkip.reason, /від імені каналу/);
+  await comment("message", 602, 200, andrii, "просто привіт");
+  s = await (await import("../store.js")).store(env.DB).then((d) => d.all());
+  assert.match(s.lastSkip.reason, /немає значка/);
+});
+
 test("функції: секрет вебхука, setup, health", async () => {
   const req = (secret) => new Request("https://zrobleno.pages.dev/api/tg", {
     method: "POST", headers: { "x-telegram-bot-api-secret-token": secret }, body: "{}",
