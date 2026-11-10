@@ -27,10 +27,13 @@ test("нотатка після тире", () => {
 test("реєстрація", () => {
   const r = parseRegistration("1️⃣ Іван\n2️⃣ Читання\n3️⃣ 1 сторінка\n4️⃣ Хочу читати більше");
   assert.deepEqual(r, { name: "Іван", habit: "Читання", minimum: "1 сторінка", why: "Хочу читати більше" });
-  const r2 = parseRegistration("1. Олена\n2. Звичка: біг\n3. Мінімум — 10 хвилин");
+  const r2 = parseRegistration("1. Олена\n2. Звичка: біг\n3. Мінімум — 10 хвилин\n4. Навіщо: здоровʼя");
   assert.equal(r2.habit, "біг");
   assert.equal(r2.minimum, "10 хвилин");
   assert.equal(parseRegistration("Привіт!"), null);
+  // неповна реєстрація не приймається
+  assert.equal(parseRegistration("1️⃣ Марко\n2️⃣ Біг\n3️⃣ 10 хвилин"), null);
+  assert.equal(parseRegistration("3️⃣ 20 хвилин"), null);
   // цифра визначає поле, порядок не важливий
   const r3 = parseRegistration("2️⃣ Біг\n1️⃣ Марко\n4️⃣ Для здоровʼя\n3️⃣ 10 хвилин");
   assert.deepEqual(r3, { name: "Марко", habit: "Біг", minimum: "10 хвилин", why: "Для здоровʼя" });

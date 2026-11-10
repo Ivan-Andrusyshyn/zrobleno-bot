@@ -35,6 +35,7 @@ export function parseNote(text) {
 /**
  * Реєстрація під постом:
  * 1️⃣ Імʼя  2️⃣ Звичка  3️⃣ Мінімум  4️⃣ Навіщо
+ * Потрібні всі 4 пункти — тоді дані повністю замінюються.
  * Якщо рядки пронумеровані — поле визначає цифра (порядок не важливий),
  * а рядки без цифри ігноруються. Порожній шаблон або незмінений приклад
  * не вважаються реєстрацією.
@@ -66,7 +67,7 @@ export function parseRegistration(text) {
     if (rest.length && fields[3]) fields[3] += " " + rest.join(" ");
   }
   if (labelsOnly >= 2) return null; // скопійовано порожній шаблон
-  if (!fields[0] || !fields[1]) return null;
+  if (!fields.every(Boolean)) return null; // потрібні всі 4 пункти
   const low = fields.slice(0, 3).map((f) => (f || "").toLowerCase());
   if (low.every((f, i) => f === EXAMPLE[i])) return null; // незмінений приклад
   const cut = (s) => (s ? s.slice(0, 120) : null);
