@@ -2,11 +2,12 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { DataService } from './data.service';
 import { DayGrid } from './day-grid';
+import { Rules } from './rules';
 import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './models';
 
 @Component({
   selector: 'app-home',
-  imports: [RouterLink, DayGrid],
+  imports: [RouterLink, DayGrid, Rules],
   template: `
     <section class="hero">
       <p class="eyebrow">30-денний челендж звичок</p>
@@ -19,6 +20,8 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
       <div class="stat"><b>{{ data.participants().length }}</b><span>учасників</span></div>
       <div class="stat"><b>{{ checkedToday() }}</b><span>відмітилися сьогодні</span></div>
     </section>
+
+    <app-rules />
 
     <label class="search">
       <span class="sr-only">Пошук учасника</span>
