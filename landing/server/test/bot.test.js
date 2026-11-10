@@ -79,7 +79,7 @@ test("банер без підпису: день за датою публіка�
   assert.equal(p.days[2], "done");
   assert.equal(p.days[1], "min");
   // реєстрація під постом дня (пізнє долучення) теж працює
-  await comment("message", 302, 300, { id: 11, is_bot: false, first_name: "Ірина" }, "1️⃣ Ірина\n2️⃣ Біг\n3️⃣ 10 хвилин");
+  await comment("message", 302, 300, { id: 11, is_bot: false, first_name: "Ірина" }, "1️⃣ Ірина\n2️⃣ Біг\n3️⃣ 10 хвилин\n4️⃣ Для здоровʼя");
   const p2 = (await participantsPayload(env)).participants.find((x) => x.name === "Ірина");
   assert.equal(p2.habit, "Біг");
 });
