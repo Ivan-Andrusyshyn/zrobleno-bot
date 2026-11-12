@@ -195,6 +195,7 @@ async function handleCommand(m, db, api, env) {
       const week = n >= 1 && n <= Math.floor(TOTAL_DAYS / WEEK_DAYS) ? n : Math.max(1, Math.floor((day - 1) / WEEK_DAYS));
       if (post) {
         const r = await postWeek(env, db, s, week, Math.min(day, TOTAL_DAYS) || null, api);
+        if (r.posted) await db.claimWeek(week);
         return reply(r.posted ? `Опубліковано підсумок ${week}-го тижня ✅${r.underDayPost ? "" : " (поста дня не знайшов — написав просто в групу)"}` : `Не опубліковано: ${r.reason}`);
       }
       const text = weekSummaryText(await db.participantsWithCheckins(), week, env.SITE_URL || "https://zrobleno.pages.dev");
@@ -223,6 +224,6 @@ const HELP_ADMIN = `Команди адміна:
 /week 2 — підсумок 2-го тижня
 /week post — опублікувати підсумок у групі зараз
 
-Підсумки тижня бот сам публікує на 8, 15, 22 і 29 день о 18:00 під постом дня.
+Підсумки тижня бот сам публікує на 8, 15, 22 і 29 день з першим коментарем після 18:00, під постом дня.
 
 Якщо дату старту не задано, у тексті кожного поста дня має бути «День N».`;

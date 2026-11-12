@@ -5,6 +5,7 @@ import { fakeD1 } from "./fake-d1.js";
 import { handleUpdate } from "../handler.js";
 import { weekDueOn, weekSummaryText, runWeekly } from "../weekly.js";
 import { onRequestGet as weeklyFn } from "../../functions/api/weekly.js";
+import { __resetSchemaForTests } from "../store.js";
 
 test("weekDueOn: підсумки на 8, 15, 22, 29 день", () => {
   const due = [];
@@ -44,6 +45,7 @@ test("текст підсумку", () => {
 });
 
 test("розклад: публікує раз, у день 8 після 18:00, під постом дня", async () => {
+  __resetSchemaForTests();
   const env = { DB: fakeD1(), ADMIN_CODE: "c", WEBHOOK_SECRET: "s1", CRON_KEY: "k1", BOT_TOKEN: "t", TIMEZONE: "Europe/Kiev" };
   const sent = [];
   const api = {
@@ -83,4 +85,73 @@ test("розклад: публікує раз, у день 8 після 18:00, �
   // HTTP-ендпойнт: без ключа — 403
   assert.equal((await weeklyFn({ request: new Request("https://x/api/weekly?key=bad"), env })).status, 403);
   assert.equal((await weeklyFn({ request: new Request("https://x/api/weekly?key=s1"), env })).status, 403); // є CRON_KEY → секрет вебхука не підходить
+});
+
+test("без будильника: коментар після 18:00 на 8-й день запускає підсумок, рівно один раз", async () => {
+  const { onRequestPost: tgFn } = await import("../../functions/api/tg.js");
+  __resetSchemaForTests();
+  const env = { DB: fakeD1(), ADMIN_CODE: "c", WEBHOOK_SECRET: "s1", BOT_TOKEN: "t", TIMEZONE: "Europe/Kiev" };
+  const calls = [];
+  const realFetch = globalThis.fetch;
+  const RealDate = globalThis.Date;
+  globalThis.fetch = async (url, init) => { calls.push({ method: String(url).split("/").pop(), body: JSON.parse(init.body) }); return Response.json({ ok: true, result: {} }); };
+  let fakeNow = RealDate.parse("2026-11-17T15:00:00Z"); // день 8, 17:00 Київ
+  globalThis.Date = class extends RealDate { constructor(...a) { super(...(a.length ? a : [fakeNow])); } static now() { return fakeNow; } };
+  try {
+    const G = -100777;
+    let id = 0;
+    const send = async (message) => {
+      const pending = [];
+      await tgFn({
+        request: new Request("https://x/api/tg", { method: "POST", headers: { "x-telegram-bot-api-secret-token": "s1" }, body: JSON.stringify({ update_id: ++id, message: { date: 0, ...message } }) }),
+        env, waitUntil: (p) => pending.push(p),
+      });
+      await Promise.all(pending);
+    };
+    const pm = (text) => send({ message_id: ++id, chat: { id: 42, type: "private" }, from: { id: 42 }, text });
+    await pm("/admin c");
+    await handleUpdate({ update_id: 1, my_chat_member: { chat: { id: G, type: "supergroup", title: "Чат" }, new_chat_member: { status: "administrator" } } }, env, { send: async () => {}, call: async () => {} });
+    await pm("/date 10.11.2026");
+    for (let d = 1; d <= 8; d++) {
+      await send({ message_id: d * 100, chat: { id: G, type: "supergroup" }, is_automatic_forward: true, sender_chat: { id: -1 }, text: `День ${d}` });
+      if (d < 8) await send({ message_id: d * 100 + 1, message_thread_id: d * 100, chat: { id: G, type: "supergroup" }, from: { id: 7, first_name: "Оля" }, text: `День ${d} ✅` });
+    }
+    const summaries = () => calls.filter((c) => c.method === "sendMessage" && /Підсумки 1-го тижня/.test(c.body.text));
+    await send({ message_id: 900, message_thread_id: 800, chat: { id: G, type: "supergroup" }, from: { id: 7, first_name: "Оля" }, text: "✅" });
+    assert.equal(summaries().length, 0, "до 18:00 — нічого");
+
+    fakeNow = RealDate.parse("2026-11-17T16:10:00Z"); // 18:10 Київ
+    await Promise.all([ // два коментарі одночасно → все одно один підсумок
+      send({ message_id: 901, message_thread_id: 800, chat: { id: G, type: "supergroup" }, from: { id: 8, first_name: "Андрій" }, text: "✅" }),
+      send({ message_id: 902, message_thread_id: 800, chat: { id: G, type: "supergroup" }, from: { id: 9, first_name: "Марта" }, text: "привіт" }),
+    ]);
+    await send({ message_id: 903, message_thread_id: 800, chat: { id: G, type: "supergroup" }, from: { id: 9, first_name: "Марта" }, text: "✅" });
+    assert.equal(summaries().length, 1);
+    assert.equal(summaries()[0].body.reply_parameters.message_id, 800);
+
+    // особисті повідомлення не запускають підсумок; /week post після автопублікації не дублює автоматику
+    await pm("/week post");
+    assert.equal(summaries().length, 2); // ручна публікація — завжди, коли просиш
+  } finally {
+    globalThis.fetch = realFetch;
+    globalThis.Date = RealDate;
+  }
+});
+
+test("ручний /week post позначає тиждень — автоматика потім не дублює", async () => {
+  __resetSchemaForTests();
+  const env = { DB: fakeD1(), ADMIN_CODE: "c", BOT_TOKEN: "t", TIMEZONE: "Europe/Kiev" };
+  const sent = [];
+  const api = { call: async () => ({}), send: async (chat_id, text, extra = {}) => { sent.push({ chat_id, text, ...extra }); return {}; } };
+  let uid = 0;
+  const G = -5;
+  const upd = (message) => handleUpdate({ update_id: ++uid, message: { date: 0, ...message } }, env, api);
+  await upd({ message_id: 1, chat: { id: 42, type: "private" }, from: { id: 42 }, text: "/admin c" });
+  await handleUpdate({ update_id: ++uid, my_chat_member: { chat: { id: G, type: "supergroup", title: "Ч" }, new_chat_member: { status: "administrator" } } }, env, api);
+  await upd({ message_id: 2, chat: { id: 42, type: "private" }, from: { id: 42 }, text: "/date 10.11.2026" });
+  await upd({ message_id: 10, message_thread_id: 5, chat: { id: G, type: "supergroup" }, from: { id: 7, first_name: "Оля" }, text: "День 1 ✅" });
+  await upd({ message_id: 3, chat: { id: 42, type: "private" }, from: { id: 42 }, text: "/week post 1" });
+  assert.match(sent.at(-1).text, /Опубліковано підсумок 1-го тижня/);
+  const r = await runWeekly(env, { now: new Date("2026-11-17T17:00:00Z"), api });
+  assert.equal(r.reason, "вже опубліковано");
 });

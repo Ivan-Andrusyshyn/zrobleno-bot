@@ -48,6 +48,15 @@ export async function store(db) {
         .bind(String(chatId), day).first();
       return r?.msg_id ?? null;
     },
+    /** Атомарно «забронювати» публікацію підсумку тижня: true — лише для першого, хто встиг */
+    async claimWeek(week) {
+      const r = await db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING RETURNING key")
+        .bind(`weekly:${week}`, JSON.stringify(now())).first();
+      return !!r;
+    },
+    async unclaimWeek(week) {
+      await db.prepare("DELETE FROM settings WHERE key = ?").bind(`weekly:${week}`).run();
+    },
     async maxDay() {
       const r = await db.prepare("SELECT MAX(num) AS d FROM threads WHERE kind = 'day'").first();
       return r?.d ?? 0;

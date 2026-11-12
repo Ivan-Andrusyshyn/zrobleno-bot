@@ -94,12 +94,12 @@ export async function postWeek(env, db, s, week, day, api) {
   await api.send(s.groupId, text, root
     ? { reply_parameters: { message_id: root, allow_sending_without_reply: true }, link_preview_options: { is_disabled: true } }
     : { link_preview_options: { is_disabled: true } });
-  await db.set({ weeklyPosted: [...new Set([...(s.weeklyPosted || []), week])] });
   return { posted: true, week, underDayPost: !!root };
 }
 
 /**
- * Викликається за розкладом (наприклад, щогодини з cron-job.org → /api/weekly?key=...).
+ * Викликається після кожного повідомлення в групі коментарів (functions/api/tg.js),
+ * а також, за бажанням, зовнішнім розкладом через /api/weekly?key=...
  * Публікує лише раз на тиждень: у день 8/15/22/29, не раніше 18:00 за Києвом.
  */
 export async function runWeekly(env, { now = new Date(), api } = {}) {
@@ -109,6 +109,13 @@ export async function runWeekly(env, { now = new Date(), api } = {}) {
   const week = weekDueOn(day);
   if (!week) return { posted: false, day, reason: "сьогодні не день підсумків" };
   if (hourIn(now, TIMEZONE(env)) < HOUR(env)) return { posted: false, day, week, reason: `ще немає ${HOUR(env)}:00` };
-  if ((s.weeklyPosted || []).includes(week)) return { posted: false, day, week, reason: "вже опубліковано" };
-  return { day, ...(await postWeek(env, db, s, week, day, api || tg(env.BOT_TOKEN))) };
+  if (!(await db.claimWeek(week))) return { posted: false, day, week, reason: "вже опубліковано" };
+  try {
+    const r = await postWeek(env, db, s, week, day, api || tg(env.BOT_TOKEN));
+    if (!r.posted) await db.unclaimWeek(week);
+    return { day, ...r };
+  } catch (e) {
+    await db.unclaimWeek(week); // спробуємо з наступним коментарем
+    throw e;
+  }
 }
