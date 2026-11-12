@@ -42,6 +42,12 @@ export async function store(db) {
     async thread(chatId, msgId) {
       return db.prepare("SELECT kind, num, created_at FROM threads WHERE chat_id = ? AND msg_id = ?").bind(String(chatId), msgId).first();
     },
+    /** Повідомлення поста «День N» у групі (останнє, якщо їх кілька) — під ним коментарі цього дня */
+    async dayThread(chatId, day) {
+      const r = await db.prepare("SELECT msg_id FROM threads WHERE chat_id = ? AND kind = 'day' AND num = ? ORDER BY created_at DESC, msg_id DESC LIMIT 1")
+        .bind(String(chatId), day).first();
+      return r?.msg_id ?? null;
+    },
     async maxDay() {
       const r = await db.prepare("SELECT MAX(num) AS d FROM threads WHERE kind = 'day'").first();
       return r?.d ?? 0;

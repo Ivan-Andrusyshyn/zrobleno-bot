@@ -5,6 +5,7 @@ import {
   TOTAL_DAYS, parseDay, parseStatus, parseNote, parseRegistration,
   displayName, todayYmd, dayNumber, parseDate,
 } from "./parse.js";
+import { weekSummaryText, postWeek, WEEK_DAYS } from "./weekly.js";
 
 const TIMEZONE = (env) => env.TIMEZONE || "Europe/Kiev";
 // Реакція 👍 на зараховану відмітку. Вимкнути: змінна REACT_ON_CHECKIN = 0
@@ -146,7 +147,7 @@ async function handleCommand(m, db, api, env) {
   const s = await db.all();
   const admins = (s.admins || []).map(String);
   const isAdmin = admins.includes(String(m.from.id));
-  const reply = (text) => api.send(m.chat.id, text);
+  const reply = (text, extra) => api.send(m.chat.id, text, extra);
 
   switch (cmd) {
     case "/start":
@@ -185,6 +186,20 @@ async function handleCommand(m, db, api, env) {
       await db.set({ startDate: ymd });
       return reply(`Старт: ${ymd}. Поточний день на лендінгу рахую від цієї дати.`);
     }
+    case "/week": {
+      // /week — показати мені підсумок останнього завершеного тижня; /week 2 — конкретного;
+      // /week post — опублікувати в групі зараз (не чекаючи 18:00)
+      const day = await currentDay(db, s, env);
+      const post = args[0] === "post";
+      const n = Number(post ? args[1] : args[0]);
+      const week = n >= 1 && n <= Math.floor(TOTAL_DAYS / WEEK_DAYS) ? n : Math.max(1, Math.floor((day - 1) / WEEK_DAYS));
+      if (post) {
+        const r = await postWeek(env, db, s, week, Math.min(day, TOTAL_DAYS) || null, api);
+        return reply(r.posted ? `Опубліковано підсумок ${week}-го тижня ✅${r.underDayPost ? "" : " (поста дня не знайшов — написав просто в групу)"}` : `Не опубліковано: ${r.reason}`);
+      }
+      const text = weekSummaryText(await db.participantsWithCheckins(), week, env.SITE_URL || "https://zrobleno.pages.dev");
+      return reply(text ? `Попередній перегляд (у групу не відправлено):\n\n${text}` : "Поки немає учасників з відмітками.", { link_preview_options: { is_disabled: true } });
+    }
     default:
       return reply(HELP_ADMIN);
   }
@@ -204,5 +219,10 @@ const HELP_ADMIN = `Команди адміна:
 /status — група, поточний день, скільки учасників і відміток
 /date 10.11.2026 — дата старту: тоді пости дня можна публікувати без тексту «День N» (день рахується за датою)
 /date off — рахувати день за постами
+/week — підсумок останнього тижня (тільки тобі, для перевірки)
+/week 2 — підсумок 2-го тижня
+/week post — опублікувати підсумок у групі зараз
+
+Підсумки тижня бот сам публікує на 8, 15, 22 і 29 день о 18:00 під постом дня.
 
 Якщо дату старту не задано, у тексті кожного поста дня має бути «День N».`;
