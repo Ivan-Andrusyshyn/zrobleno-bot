@@ -1,0 +1,244 @@
+// Уся логіка бота: розбір коментарів, команди, дані для лендінгу
+import { tg } from "./telegram.js";
+import { store } from "./store.js";
+import {
+  TOTAL_DAYS, parseDay, parseStatus, parseNote, parseRegistration,
+  displayName, todayYmd, dayNumber, parseDate,
+} from "./parse.js";
+import { summaryText, postSummary } from "./summary.js";
+
+const TIMEZONE = (env) => env.TIMEZONE || "Europe/Kiev";
+// Реакція 👍 на зараховану відмітку. Вимкнути: змінна REACT_ON_CHECKIN = 0
+const REACT = (env) => env.REACT_ON_CHECKIN !== "0";
+
+export const BOT_COMMANDS = [
+  { command: "status", description: "Скільки учасників і відміток" },
+  { command: "hideme", description: "Сховати мене з лендінгу" },
+  { command: "showme", description: "Показати мене на лендінгу" },
+  { command: "help", description: "Допомога" },
+];
+
+// Меню адміна: бачить лише він (scope = його особистий чат)
+export const ADMIN_COMMANDS = [
+  { command: "status", description: "Скільки учасників і відміток" },
+  { command: "stats", description: "Підсумок марафону (stats 3 · stats post)" },
+  { command: "date", description: "Дата старту челенджу" },
+  { command: "hideme", description: "Сховати мене з лендінгу" },
+  { command: "showme", description: "Показати мене на лендінгу" },
+  { command: "help", description: "Допомога" },
+];
+export const setAdminMenu = (api, chatId) =>
+  api.call("setMyCommands", { commands: ADMIN_COMMANDS, scope: { type: "chat", chat_id: Number(chatId) } });
+
+// ---------- Дані для лендінгу ----------
+async function currentDay(db, s, env) {
+  if (s.startDate) {
+    const n = dayNumber(s.startDate, todayYmd(new Date(), TIMEZONE(env)));
+    return Math.max(0, Math.min(n, TOTAL_DAYS + 1));
+  }
+  return db.maxDay();
+}
+
+export async function participantsPayload(env) {
+  const db = await store(env.DB);
+  const s = await db.all();
+  const { people, marks } = await db.participantsWithCheckins();
+  const days = new Map(people.map((p) => [p.userId, Array(TOTAL_DAYS).fill(null)]));
+  const comments = new Map(people.map((p) => [p.userId, []]));
+  for (const m of marks) {
+    const arr = days.get(m.userId);
+    if (!arr || m.day < 1 || m.day > TOTAL_DAYS) continue;
+    arr[m.day - 1] = m.status;
+    if (m.text) comments.get(m.userId).push({ day: m.day, status: m.status, text: m.text, at: m.updatedAt });
+  }
+  return {
+    challenge: { startDate: s.startDate || null, currentDay: await currentDay(db, s, env), totalDays: TOTAL_DAYS },
+    participants: people.map((p, i) => ({
+      id: i + 1, // Telegram ID назовні не віддаємо
+      name: p.name || p.tgName || "Учасник",
+      habit: p.habit || "Звичка не вказана",
+      minimum: p.minimum || "—",
+      why: p.why || undefined,
+      days: days.get(p.userId),
+      comments: comments.get(p.userId).sort((a, b) => b.day - a.day),
+    })),
+  };
+}
+
+// Запамʼятати, чому коментар не зараховано (видно в /api/health)
+async function skip(db, reason, m) {
+  await db.set({ lastSkip: { reason, at: new Date().toISOString(), text: (m.text || m.caption || "").slice(0, 40) } }).catch(() => {});
+}
+
+// ---------- Оновлення від Telegram ----------
+export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
+  const db = await store(env.DB);
+
+  // Бота зробили адміном у групі коментарів
+  if (u.my_chat_member) {
+    const { chat, new_chat_member } = u.my_chat_member;
+    if ((chat.type === "supergroup" || chat.type === "group") && new_chat_member.status === "administrator") {
+      await db.set({ groupId: String(chat.id), groupTitle: chat.title || "" });
+      const s = await db.all();
+      for (const id of s.admins || []) {
+        await api.send(id, `✅ Мене додано адміном у групу «${chat.title}». Збираю відмітки звідти.`).catch(() => {});
+      }
+    }
+    return;
+  }
+
+  const m = u.message || u.edited_message;
+  if (!m) return;
+
+  if (m.chat.type === "private") {
+    if (m.text?.startsWith("/")) await handleCommand(m, db, api, env);
+    return;
+  }
+
+  const s = await db.all();
+  if (s.groupId && String(m.chat.id) !== String(s.groupId)) return skip(db, "повідомлення з іншої групи", m);
+
+  const text = m.text || m.caption || "";
+
+  // Пост каналу автоматично зʼявився в групі → запамʼятовуємо, чи це «День N»
+  if (m.is_automatic_forward) {
+    // День беремо з тексту («День 5»), а якщо тексту немає (банер без підпису) —
+    // рахуємо за датою публікації від дати старту (/date)
+    let day = parseDay(text);
+    if (!day && s.startDate && m.date) {
+      const n = dayNumber(s.startDate, todayYmd(new Date(m.date * 1000), TIMEZONE(env)));
+      if (n >= 1 && n <= TOTAL_DAYS) day = n;
+    }
+    await db.saveThread(m.chat.id, m.message_id, day ? "day" : "info", day);
+    return;
+  }
+
+  if (m.sender_chat) return skip(db, "коментар від імені каналу або анонімного адміна — автор невідомий", m);
+  if (!m.from || m.from.is_bot) return;
+
+  const rootId = m.message_thread_id ?? m.reply_to_message?.message_id;
+  const thread = rootId ? await db.thread(m.chat.id, rootId) : null;
+  const tgName = displayName(m.from.first_name, m.from.last_name);
+
+  // Відмітка дня
+  const status = parseStatus(text);
+  if (status) {
+    let day = parseDay(text) ?? (thread?.kind === "day" ? thread.num : null);
+    // Запасний варіант: день за датою поста (або коментаря, якщо пост боту невідомий) від дати старту
+    if (!day && s.startDate) {
+      const when = thread?.created_at ? new Date(thread.created_at) : new Date(m.date * 1000);
+      const n = dayNumber(s.startDate, todayYmd(when, TIMEZONE(env)));
+      if (n >= 1 && n <= TOTAL_DAYS) day = n;
+    }
+    if (!day) return skip(db, `не вдалося визначити день (пост: ${thread?.kind ?? "невідомий"}, старт: ${s.startDate ?? "не задано"})`, m);
+    await db.touchParticipant(m.from.id, tgName);
+    await db.saveCheckin(m.from.id, day, status, parseNote(text), text.slice(0, 1000), m.message_id);
+    if (u.message && REACT(env)) {
+      await api.call("setMessageReaction", {
+        chat_id: m.chat.id, message_id: m.message_id, reaction: [{ type: "emoji", emoji: "👍" }],
+      }).catch(() => {});
+    }
+    return;
+  }
+
+  // Реєстрація під головним постом (або будь-де, якщо є 3+ рядки)
+  const reg = parseRegistration(text);
+  if (reg && (thread?.kind === "info" || reg.minimum)) {
+    await db.touchParticipant(m.from.id, tgName);
+    await db.saveProfile(m.from.id, reg);
+    return;
+  }
+  return skip(db, "немає значка ✅ / 🟨 / ❌", m);
+}
+
+// ---------- Команди в особистому чаті ----------
+async function handleCommand(m, db, api, env) {
+  const [cmdRaw, ...args] = m.text.trim().split(/\s+/);
+  const cmd = cmdRaw.split("@")[0].toLowerCase();
+  const arg = args.join(" ");
+  const s = await db.all();
+  const admins = (s.admins || []).map(String);
+  const isAdmin = admins.includes(String(m.from.id));
+  const reply = (text, extra) => api.send(m.chat.id, text, extra);
+
+  switch (cmd) {
+    case "/start":
+    case "/help":
+      return reply(isAdmin ? HELP_ADMIN : HELP_USER);
+    case "/hideme":
+      await db.setHidden(m.from.id, true);
+      return reply("Готово, тебе не видно на лендінгу. Відмітки все одно рахуються. Повернути: /showme");
+    case "/showme":
+      await db.setHidden(m.from.id, false);
+      return reply("Готово, ти знову на лендінгу ✅");
+    case "/admin":
+      if (!env.ADMIN_CODE || arg !== env.ADMIN_CODE) return reply("Невірний код.");
+      if (!isAdmin) await db.set({ admins: [...admins, String(m.from.id)] });
+      await setAdminMenu(api, m.chat.id).catch(() => {});
+      return reply("Ти адмін бота ✅\n\nДалі: додай мене адміном у групу коментарів каналу, потім /status");
+  }
+
+  if (!isAdmin) return reply(HELP_USER);
+
+  switch (cmd) {
+    case "/status": {
+      const day = await currentDay(db, s, env);
+      const c = await db.counts(day);
+      return reply([
+        `Група коментарів: ${s.groupId ? (s.groupTitle || s.groupId) + " ✅" : "не підключено ❌ (додай мене адміном)"}`,
+        `Поточний день: ${day || "—"}${s.startDate ? ` (старт ${s.startDate})` : " (за останнім постом «День N»)"}`,
+        `Постів «День N» побачено: ${c.dayPosts}`,
+        `Учасників: ${c.participants}`,
+        `Відміток за сьогодні: ${c.today}`,
+      ].join("\n"));
+    }
+    case "/date": {
+      if (arg === "off") { await db.set({ startDate: null }); return reply("Поточний день рахую за останнім постом «День N»."); }
+      const ymd = parseDate(arg);
+      if (!ymd) return reply("Формат: /date 10.11.2026 (або /date off — рахувати за постами)");
+      await db.set({ startDate: ymd });
+      return reply(`Старт: ${ymd}. Поточний день на лендінгу рахую від цієї дати.`);
+    }
+    case "/stats": {
+      // /stats — показати мені підсумок, який сьогодні піде в групу (дні 1…вчора);
+      // /stats 3 — підсумок за дні 1–3; /stats 7 — фінальний;
+      // /stats post — опублікувати сьогоднішній підсумок у групі зараз (не чекаючи 18:00)
+      const today = await currentDay(db, s, env);
+      const post = args[0] === "post";
+      const n = Number(post ? args[1] : args[0]);
+      // «день публікації»: підсумок за дні 1…n публікується в день n+1
+      const day = n >= 1 && n <= TOTAL_DAYS ? n + 1 : Math.min(Math.max(today, 2), TOTAL_DAYS + 1);
+      if (post) {
+        const r = await postSummary(env, db, s, day, api);
+        if (r.posted) await db.claimSummary(day);
+        return reply(r.posted ? `Опубліковано підсумок за дні 1–${day - 1} ✅${r.underDayPost ? "" : " (окремим повідомленням у групі)"}` : `Не опубліковано: ${r.reason}`);
+      }
+      const text = summaryText(await db.participantsWithCheckins(), day, env.SITE_URL || "https://zrobleno-7.pages.dev");
+      return reply(text ? `Попередній перегляд (у групу не відправлено):\n\n${text}` : "Поки немає учасників з відмітками.", { link_preview_options: { is_disabled: true } });
+    }
+    default:
+      return reply(HELP_ADMIN);
+  }
+}
+
+const HELP_USER = `Я бот марафону «Зроблено. 7 днів» 👋
+Рахую відмітки з коментарів під постами «День N».
+
+Як відмітитися: під постом свого дня напиши
+День 5 ✅ — 15 сторінок
+✅ зроблено · 🟨 мінімум · ❌ пропуск
+
+/hideme — сховати себе з лендінгу
+/showme — повернути`;
+
+const HELP_ADMIN = `Команди адміна:
+/status — група, поточний день, скільки учасників і відміток
+/date 10.11.2026 — дата старту: тоді пости дня можна публікувати без тексту «День N» (день рахується за датою)
+/date off — рахувати день за постами
+/stats — підсумок, який сьогодні піде в групу (тільки тобі, для перевірки)
+/stats 3 — підсумок за дні 1–3 · /stats 7 — фінальний
+/stats post — опублікувати сьогоднішній підсумок у групі зараз
+
+Щоденні підсумки бот сам публікує на 2–7 день з першим коментарем після 18:00 під постом дня, а на 8-й день — фінал окремим повідомленням. Для фіналу потрібна /date.
+
+Якщо дату старту не задано, у тексті кожного поста дня має бути «День N».`;
