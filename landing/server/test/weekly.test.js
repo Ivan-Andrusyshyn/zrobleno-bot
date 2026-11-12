@@ -155,3 +155,15 @@ test("ручний /week post позначає тиждень — автомат
   const r = await runWeekly(env, { now: new Date("2026-11-17T17:00:00Z"), api });
   assert.equal(r.reason, "вже опубліковано");
 });
+
+test("/admin додає адміну меню з /week і /date", async () => {
+  __resetSchemaForTests();
+  const env = { DB: fakeD1(), ADMIN_CODE: "c", TIMEZONE: "Europe/Kiev" };
+  const calls = [];
+  const api = { call: async (method, body) => { calls.push({ method, ...body }); return {}; }, send: async () => ({}) };
+  await handleUpdate({ update_id: 1, message: { date: 0, message_id: 1, chat: { id: 42, type: "private" }, from: { id: 42 }, text: "/admin c" } }, env, api);
+  const menu = calls.find((c) => c.method === "setMyCommands");
+  assert.deepEqual(menu.scope, { type: "chat", chat_id: 42 });
+  assert.ok(menu.commands.some((c) => c.command === "week"));
+  assert.ok(menu.commands.some((c) => c.command === "date"));
+});

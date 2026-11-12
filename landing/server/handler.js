@@ -18,6 +18,18 @@ export const BOT_COMMANDS = [
   { command: "help", description: "Допомога" },
 ];
 
+// Меню адміна: бачить лише він (scope = його особистий чат)
+export const ADMIN_COMMANDS = [
+  { command: "status", description: "Скільки учасників і відміток" },
+  { command: "week", description: "Підсумок тижня (week 2 · week post)" },
+  { command: "date", description: "Дата старту челенджу" },
+  { command: "hideme", description: "Сховати мене з лендінгу" },
+  { command: "showme", description: "Показати мене на лендінгу" },
+  { command: "help", description: "Допомога" },
+];
+export const setAdminMenu = (api, chatId) =>
+  api.call("setMyCommands", { commands: ADMIN_COMMANDS, scope: { type: "chat", chat_id: Number(chatId) } });
+
 // ---------- Дані для лендінгу ----------
 async function currentDay(db, s, env) {
   if (s.startDate) {
@@ -162,6 +174,7 @@ async function handleCommand(m, db, api, env) {
     case "/admin":
       if (!env.ADMIN_CODE || arg !== env.ADMIN_CODE) return reply("Невірний код.");
       if (!isAdmin) await db.set({ admins: [...admins, String(m.from.id)] });
+      await setAdminMenu(api, m.chat.id).catch(() => {});
       return reply("Ти адмін бота ✅\n\nДалі: додай мене адміном у групу коментарів каналу, потім /status");
   }
 
