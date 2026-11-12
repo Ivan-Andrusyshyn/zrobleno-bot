@@ -66,9 +66,9 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
     .comments { margin-top: 24px; display: grid; gap: 10px; }
     .comments h2 { margin: 0 0 4px; font-size: 20px; font-weight: 800; }
     .comment { background: var(--card); border-radius: 16px; padding: 14px 16px; border-left: 0; position: relative; }
-    .comment::before { content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 2px; background: var(--accent); }
+    .comment::before { content: ''; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 2px; background: var(--done); }
     .comment.min::before { background: var(--min, #ffc83d); }
-    .comment.miss::before { background: #3a3a3a; }
+    .comment.miss::before { background: var(--miss); }
     .c-head { display: flex; align-items: center; gap: 8px; text-align: left; padding: 0; }
     .c-day { font-weight: 700; font-size: 14px; }
     .c-icon { font-size: 14px; }

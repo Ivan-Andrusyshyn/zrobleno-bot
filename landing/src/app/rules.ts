@@ -93,9 +93,9 @@ import { Component } from '@angular/core';
 
     .sq { flex: none; width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; }
     .sq svg { width: 70%; height: 70%; fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
-    .sq.done { background: var(--accent); } .sq.done svg { stroke: #000; }
+    .sq.done { background: var(--done); } .sq.done svg { stroke: var(--done-ink); }
     .sq.min { background: var(--min, #ffc83d); } .sq.min svg { stroke: #000; }
-    .sq.miss { background: #262626; } .sq.miss svg { stroke: #8a8a8a; }
+    .sq.miss { background: var(--miss); } .sq.miss svg { stroke: #8a8a8a; }
     .sq.big { width: 36px; height: 36px; border-radius: 9px; }
 
     .example { margin: 0 0 16px; padding: 12px; border-radius: 16px; border: 1px dashed #2e2e2e; display: grid; gap: 8px; }

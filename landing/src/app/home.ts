@@ -100,9 +100,9 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
     .legend { list-style: none; padding: 0; margin: 20px 0 0; display: flex; gap: 18px; justify-content: center; color: var(--muted); font-size: 13px; }
     .legend li { display: flex; align-items: center; gap: 6px; }
     .lg { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
-    .lg.done { background: var(--accent); }
+    .lg.done { background: var(--done); }
     .lg.min { background: var(--min, #ffc83d); }
-    .lg.miss { background: #3a3a3a; }
+    .lg.miss { background: var(--miss); }
     .note { color: var(--muted); font-size: 13px; text-align: center; margin: 16px 0 0; }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
     @media (min-width: 720px) {

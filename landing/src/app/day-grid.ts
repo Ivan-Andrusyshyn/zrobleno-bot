@@ -25,11 +25,11 @@ import { DayStatus } from './models';
     .cell { aspect-ratio: 1; border-radius: 6px; background: #1d1d1d; display: grid; place-items: center; position: relative; }
     .big .cell { border-radius: 10px; }
     .cell svg { width: 70%; height: 70%; fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
-    .done { background: var(--accent); }
-    .done svg { stroke: #000; }
+    .done { background: var(--done); }
+    .done svg { stroke: var(--done-ink); }
     .min { background: var(--min, #ffc83d); }
     .min svg { stroke: #000; }
-    .miss { background: #262626; }
+    .miss { background: var(--miss); }
     .miss svg { stroke: #8a8a8a; }
     .empty { background: #141414; box-shadow: inset 0 0 0 1px #2a2a2a; }
     .future { background: #0e0e0e; box-shadow: inset 0 0 0 1px #1c1c1c; }
