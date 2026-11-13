@@ -28,9 +28,13 @@ type Pick = { icon: string; name: string; tier: Tier | 'off'; status: string; ru
         <div class="next done-all"><span class="md platinum" aria-hidden="true">🏆</span><b>Увесь шлях пройдено!</b></div>
       }
 
-      <p class="lb">Шлях</p>
+      @if (!all() && !gotCount() && !bonusTotal()) {
+        <p class="muted empty">Поки нагород немає — перша зʼявиться після першої відмітки ✅ або 🟨.</p>
+      }
+
+      @if (all() || gotCount()) { <p class="lb">Шлях</p> }
       <ul class="medals">
-        @for (m of r().path; track m.at) {
+        @for (m of shownPath(); track m.at) {
           <li [class.locked]="!m.got">
             <button type="button" class="md" [class]="m.got ? m.tier : 'off'" [class.sel]="sel()?.name === m.name"
               [attr.aria-label]="m.name + (m.got ? ', отримано' : ', ще не отримано')" (click)="pickPath(m)">
@@ -42,9 +46,9 @@ type Pick = { icon: string; name: string; tier: Tier | 'off'; status: string; ru
         }
       </ul>
 
-      <p class="lb">Бонусні</p>
+      @if (all() || bonusTotal()) { <p class="lb">Бонусні</p> }
       <ul class="medals bonus">
-        @for (b of bonus; track b.key) {
+        @for (b of shownBonus(); track b.key) {
           <li [class.locked]="!r().bonus[b.key]">
             <button type="button" class="md" [class]="r().bonus[b.key] ? b.tier : 'off'" [class.sel]="sel()?.name === b.name"
               [attr.aria-label]="b.name + (r().bonus[b.key] ? ', отримано ' + r().bonus[b.key] + ' раз' : ', ще не отримано')" (click)="pickBonus(b)">
@@ -55,6 +59,11 @@ type Pick = { icon: string; name: string; tier: Tier | 'off'; status: string; ru
           </li>
         }
       </ul>
+
+      <button type="button" class="toggle" [attr.aria-expanded]="all()" (click)="toggleAll()">
+        {{ all() ? 'Сховати неотримані' : 'Усі нагороди · ' + (path.length + bonus.length) }}
+        <span class="chev" [class.up]="all()" aria-hidden="true"></span>
+      </button>
 
       @if (sel(); as s) {
         <div class="tip" role="status">
@@ -126,6 +135,12 @@ type Pick = { icon: string; name: string; tier: Tier | 'off'; status: string; ru
     .tip p { margin: 0; font-size: 14px; line-height: 1.4; color: #e6e6e6; }
     .close { position: absolute; top: 6px; right: 8px; background: none; border: 0; color: var(--muted); font-size: 20px; cursor: pointer; padding: 4px; }
 
+    .empty { margin: 14px 0 0; line-height: 1.45; }
+    .toggle { margin: 14px auto 0; display: flex; align-items: center; gap: 8px; background: #0c0c0c; border: 1px solid #262626; color: #e6e6e6;
+              border-radius: 999px; padding: 8px 16px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .toggle .chev { margin: -3px 0 0; }
+    .toggle .chev.up { transform: rotate(225deg); margin-top: 3px; }
     .rules { margin-top: 16px; border-top: 1px solid #222; }
     summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 14px 0 2px; font-weight: 700; }
     summary::-webkit-details-marker { display: none; }
@@ -143,6 +158,15 @@ export class RewardsBlock {
   protected readonly bonus = BONUS;
   r = input.required<Rewards>();
   sel = signal<Pick | null>(null);
+  /** false — лише отримані нагороди; true — усі, разом із сірими неотриманими */
+  all = signal(false);
+  shownPath = computed(() => (this.all() ? this.r().path : this.r().path.filter((m) => m.got)));
+  shownBonus = computed(() => (this.all() ? this.bonus : this.bonus.filter((b) => this.r().bonus[b.key] > 0)));
+  toggleAll() {
+    this.all.update((v) => !v);
+    // якщо була відкрита картка неотриманої — ховаємо її разом з нею
+    if (!this.all() && this.sel()?.tier === 'off') this.sel.set(null);
+  }
 
   gotCount = computed(() => this.r().path.filter((m) => m.got).length);
   bonusTotal = computed(() => Object.values(this.r().bonus).reduce((a, b) => a + b, 0));
