@@ -2,7 +2,7 @@ import { Component, computed, input, signal } from '@angular/core';
 import { BONUS, PATH, Rewards, Tier } from './rewards-logic';
 import { daysWord } from './models';
 
-type Pick = { icon: string; name: string; tier: Tier | 'off'; status: string; rule: string };
+type Pick = { icon: string; name: string; tier: Tier | 'off'; status: string; rule: string; list: 'path' | 'bonus'; index: number };
 
 /** Блок нагород на сторінці учасника: наступна нагорода, «Шлях», бонусні, правила */
 @Component({
@@ -34,29 +34,43 @@ type Pick = { icon: string; name: string; tier: Tier | 'off'; status: string; ru
 
       @if (all() || gotCount()) { <p class="lb">Шлях</p> }
       <ul class="medals">
-        @for (m of shownPath(); track m.at) {
+        @for (m of shownPath(); track m.at; let i = $index) {
           <li [class.locked]="!m.got">
             <button type="button" class="md" [class]="m.got ? m.tier : 'off'" [class.sel]="sel()?.name === m.name"
-              [attr.aria-label]="m.name + (m.got ? ', отримано' : ', ще не отримано')" (click)="pickPath(m)">
+              [attr.aria-label]="m.name + (m.got ? ', отримано' : ', ще не отримано')" (click)="pickPath(m, i)">
               {{ m.icon }}
               @if (m.isNew) { <span class="new">нова</span> }
             </button>
-            <span class="nm">{{ m.name }}</span><small>{{ m.at }}</small>
+            <span class="nm">{{ m.short }}</span><small>{{ m.at }}</small>
           </li>
+          @if (sel(); as s) { @if (s.list === 'path' && i === rowEnd(s.index, 5, shownPath().length)) { <li class="tip-row" role="status">
+              <div class="tip">
+                <span class="md" [class]="s.tier" aria-hidden="true">{{ s.icon }}</span>
+                <div><b>{{ s.name }}</b><span class="muted st">{{ s.status }}</span><p>{{ s.rule }}</p></div>
+                <button type="button" class="close" aria-label="Закрити" (click)="sel.set(null)">×</button>
+              </div>
+            </li> } }
         }
       </ul>
 
       @if (all() || bonusTotal()) { <p class="lb">Бонусні</p> }
       <ul class="medals bonus">
-        @for (b of shownBonus(); track b.key) {
+        @for (b of shownBonus(); track b.key; let i = $index) {
           <li [class.locked]="!r().bonus[b.key]">
             <button type="button" class="md" [class]="r().bonus[b.key] ? b.tier : 'off'" [class.sel]="sel()?.name === b.name"
-              [attr.aria-label]="b.name + (r().bonus[b.key] ? ', отримано ' + r().bonus[b.key] + ' раз' : ', ще не отримано')" (click)="pickBonus(b)">
+              [attr.aria-label]="b.name + (r().bonus[b.key] ? ', отримано ' + r().bonus[b.key] + ' раз' : ', ще не отримано')" (click)="pickBonus(b, i)">
               {{ b.icon }}
               @if (r().bonus[b.key]) { <span class="x">×{{ r().bonus[b.key] }}</span> }
             </button>
-            <span class="nm">{{ b.name }}</span>
+            <span class="nm">{{ b.short }}</span>
           </li>
+          @if (sel(); as s) { @if (s.list === 'bonus' && i === rowEnd(s.index, 4, shownBonus().length)) { <li class="tip-row" role="status">
+              <div class="tip">
+                <span class="md" [class]="s.tier" aria-hidden="true">{{ s.icon }}</span>
+                <div><b>{{ s.name }}</b><span class="muted st">{{ s.status }}</span><p>{{ s.rule }}</p></div>
+                <button type="button" class="close" aria-label="Закрити" (click)="sel.set(null)">×</button>
+              </div>
+            </li> } }
         }
       </ul>
 
@@ -65,13 +79,6 @@ type Pick = { icon: string; name: string; tier: Tier | 'off'; status: string; ru
         <span class="chev" [class.up]="all()" aria-hidden="true"></span>
       </button>
 
-      @if (sel(); as s) {
-        <div class="tip" role="status">
-          <span class="md" [class]="s.tier" aria-hidden="true">{{ s.icon }}</span>
-          <div><b>{{ s.name }}</b><span class="muted st">{{ s.status }}</span><p>{{ s.rule }}</p></div>
-          <button type="button" class="close" aria-label="Закрити" (click)="sel.set(null)">×</button>
-        </div>
-      }
 
       <details class="rules">
         <summary><span>Як отримати нагороди?</span><span class="chev" aria-hidden="true"></span></summary>
@@ -128,7 +135,8 @@ type Pick = { icon: string; name: string; tier: Tier | 'off'; status: string; ru
     .x { position: absolute; right: -7px; bottom: -4px; background: var(--done); color: var(--done-ink); border-radius: 999px; font-size: 11px; font-weight: 800; padding: 1px 6px; }
     .new { position: absolute; top: -8px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #000; font-size: 9px; font-weight: 800; border-radius: 999px; padding: 1px 5px; }
 
-    .tip { position: relative; margin-top: 14px; background: #0c0c0c; border: 1px solid #262626; border-radius: 14px; padding: 12px 36px 12px 12px; display: flex; gap: 12px; align-items: flex-start; }
+    .medals .tip-row { grid-column: 1 / -1; display: block; text-align: left; }
+    .tip { position: relative; margin-top: 2px; background: #0c0c0c; border: 1px solid #262626; border-radius: 14px; padding: 12px 36px 12px 12px; display: flex; gap: 12px; align-items: flex-start; }
     .tip .md { width: 38px; height: 38px; font-size: 17px; cursor: default; }
     .tip b { display: block; font-size: 15px; }
     .tip .st { display: block; margin: 1px 0 4px; }
@@ -164,23 +172,30 @@ export class RewardsBlock {
   shownBonus = computed(() => (this.all() ? this.bonus : this.bonus.filter((b) => this.r().bonus[b.key] > 0)));
   toggleAll() {
     this.all.update((v) => !v);
-    // якщо була відкрита картка неотриманої — ховаємо її разом з нею
-    if (!this.all() && this.sel()?.tier === 'off') this.sel.set(null);
+    this.sel.set(null); // порядок медалей змінився — картку закриваємо
   }
 
   gotCount = computed(() => this.r().path.filter((m) => m.got).length);
   bonusTotal = computed(() => Object.values(this.r().bonus).reduce((a, b) => a + b, 0));
 
-  pickPath(m: Rewards['path'][number]) {
+  /** Індекс останньої медалі в ряду, де стоїть вибрана: картка-пояснення вставляється одразу після цього ряду */
+  rowEnd(index: number, cols: number, len: number) {
+    return Math.min(Math.floor(index / cols) * cols + cols - 1, len - 1);
+  }
+
+  pickPath(m: Rewards['path'][number], index: number) {
+    if (this.sel()?.name === m.name) return this.sel.set(null); // повторний клік — закрити
     const left = m.at - this.r().okDays;
     this.sel.set({
       icon: m.icon, name: m.name, tier: m.got ? m.tier : 'off',
       status: m.got ? 'Отримано' : `Ще ${left} ${daysWord(left)}`,
       rule: `${m.at} ${daysWord(m.at)} з ✅ або 🟨 (не обовʼязково поспіль).`,
+      list: 'path', index,
     });
   }
-  pickBonus(b: (typeof BONUS)[number]) {
+  pickBonus(b: (typeof BONUS)[number], index: number) {
+    if (this.sel()?.name === b.name) return this.sel.set(null);
     const n = this.r().bonus[b.key];
-    this.sel.set({ icon: b.icon, name: b.name, tier: n ? b.tier : 'off', status: n ? `Отримано ×${n}` : 'Ще не отримано', rule: b.rule });
+    this.sel.set({ icon: b.icon, name: b.name, tier: n ? b.tier : 'off', status: n ? `Отримано ×${n}` : 'Ще не отримано', rule: b.rule, list: 'bonus', index });
   }
 }

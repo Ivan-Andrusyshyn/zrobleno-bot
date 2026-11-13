@@ -7,34 +7,34 @@ const ok = (s: DayStatus | undefined) => s === 'done' || s === 'min';
 
 /** «Шлях»: нагорода за кожну позначку зарахованих днів (✅ або 🟨, не обовʼязково поспіль) */
 export const PATH = [
-  { at: 1, icon: '👟', name: 'Перший крок', tier: 'bronze' },
-  { at: 3, icon: '🔥', name: 'Розігрів', tier: 'bronze' },
-  { at: 5, icon: '🎵', name: 'У ритмі', tier: 'bronze' },
-  { at: 7, icon: '💪', name: 'Тиждень сили', tier: 'silver' },
-  { at: 10, icon: '🔟', name: 'Двозначний', tier: 'silver' },
-  { at: 14, icon: '📅', name: 'Два тижні', tier: 'silver' },
-  { at: 18, icon: '🚀', name: 'Невпинний', tier: 'gold' },
-  { at: 21, icon: '🌱', name: 'Звичка народилась', tier: 'gold' },
-  { at: 25, icon: '⭐', name: 'Майже легенда', tier: 'gold' },
-  { at: 30, icon: '🏆', name: 'Фінішер', tier: 'platinum' },
-] as const satisfies readonly { at: number; icon: string; name: string; tier: Tier }[];
+  { at: 1, icon: '👟', short: 'Старт', name: 'Перший крок', tier: 'bronze' },
+  { at: 3, icon: '🔥', short: 'Розігрів', name: 'Розігрів', tier: 'bronze' },
+  { at: 5, icon: '🎵', short: 'У ритмі', name: 'У ритмі', tier: 'bronze' },
+  { at: 7, icon: '💪', short: 'Тиждень', name: 'Тиждень сили', tier: 'silver' },
+  { at: 10, icon: '🔟', short: 'Десятка', name: 'Двозначний', tier: 'silver' },
+  { at: 14, icon: '📅', short: '2 тижні', name: 'Два тижні', tier: 'silver' },
+  { at: 18, icon: '🚀', short: 'Невпинний', name: 'Невпинний', tier: 'gold' },
+  { at: 21, icon: '🌱', short: 'Звичка', name: 'Звичка народилась', tier: 'gold' },
+  { at: 25, icon: '⭐', short: 'Легенда', name: 'Майже легенда', tier: 'gold' },
+  { at: 30, icon: '🏆', short: 'Фінішер', name: 'Фінішер', tier: 'platinum' },
+] as const satisfies readonly { at: number; icon: string; short: string; name: string; tier: Tier }[];
 
 /** Бонусні — можна отримати кілька разів (×N) */
 export const BONUS = [
-  { key: 'phoenix', icon: '🪶', name: 'Фенікс', tier: 'blue', rule: 'Повернувся одразу після пропуску: після дня з ❌ або без відмітки — ✅ чи 🟨.' },
-  { key: 'perfectWeek', icon: '📆', name: 'Ідеальний тиждень', tier: 'gold', rule: '7 з 7 за тиждень челенджу (дні 1–7, 8–14, 15–21, 22–28).' },
-  { key: 'weekend', icon: '🛋️', name: 'Вихідні під контролем', tier: 'silver', rule: 'Відмітився і в суботу, і в неділю.' },
-  { key: 'storyteller', icon: '✍️', name: 'Оповідач', tier: 'bronze', rule: 'Кожні 5 відміток з текстом, а не лише значком.' },
-  { key: 'earlyBird', icon: '🌅', name: 'Ранній птах', tier: 'gold', rule: 'Кожні 3 відмітки свого дня до 9:00.' },
-  { key: 'nightOwl', icon: '🦉', name: 'Нічна сова', tier: 'blue', rule: 'Врятував день в останній момент: відмітка свого дня після 23:00.' },
-  { key: 'firstOfDay', icon: '🥇', name: 'Перший у дні', tier: 'platinum', rule: 'Першим відмітив свій день (✅ або 🟨).' },
-  { key: 'minimalist', icon: '🌿', name: 'Мінімаліст', tier: 'bronze', rule: 'Кожні 3 мінімуми 🟨 — день не пропав, хоч і було важко.' },
-] as const satisfies readonly { key: string; icon: string; name: string; tier: Tier; rule: string }[];
+  { key: 'phoenix', icon: '🪶', short: 'Фенікс', name: 'Фенікс', tier: 'blue', rule: 'Повернувся одразу після пропуску: після дня з ❌ або без відмітки — ✅ чи 🟨.' },
+  { key: 'perfectWeek', icon: '📆', short: '7 з 7', name: 'Ідеальний тиждень', tier: 'gold', rule: '7 з 7 за тиждень челенджу (дні 1–7, 8–14, 15–21, 22–28).' },
+  { key: 'weekend', icon: '🛋️', short: 'Вихідні', name: 'Вихідні під контролем', tier: 'silver', rule: 'Відмітився і в суботу, і в неділю.' },
+  { key: 'storyteller', icon: '✍️', short: 'Оповідач', name: 'Оповідач', tier: 'bronze', rule: 'Кожні 5 відміток з текстом, а не лише значком.' },
+  { key: 'earlyBird', icon: '🌅', short: 'Ранок', name: 'Ранній птах', tier: 'gold', rule: 'Кожні 3 відмітки свого дня до 9:00.' },
+  { key: 'nightOwl', icon: '🦉', short: 'Сова', name: 'Нічна сова', tier: 'blue', rule: 'Врятував день в останній момент: відмітка свого дня після 23:00.' },
+  { key: 'firstOfDay', icon: '🥇', short: 'Перший', name: 'Перший у дні', tier: 'platinum', rule: 'Першим відмітив свій день (✅ або 🟨).' },
+  { key: 'minimalist', icon: '🌿', short: 'Мінімум', name: 'Мінімаліст', tier: 'bronze', rule: 'Кожні 3 мінімуми 🟨 — день не пропав, хоч і було важко.' },
+] as const satisfies readonly { key: string; icon: string; short: string; name: string; tier: Tier; rule: string }[];
 export type BonusKey = (typeof BONUS)[number]['key'];
 
 export interface Rewards {
   okDays: number;
-  path: { at: number; icon: string; name: string; tier: Tier; got: boolean; isNew: boolean }[];
+  path: { at: number; icon: string; short: string; name: string; tier: Tier; got: boolean; isNew: boolean }[];
   next: (typeof PATH)[number] | null;
   latest: (typeof PATH)[number] | null;
   bonus: Record<BonusKey, number>;
