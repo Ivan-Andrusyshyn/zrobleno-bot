@@ -3,7 +3,7 @@ import { RouterLink } from '@angular/router';
 import { DataService } from './data.service';
 import { DayGrid } from './day-grid';
 import { Rules } from './rules';
-import { firstOfDayCounts, rewardsOf } from './rewards-logic';
+import { BONUS, firstOfDayCounts, rewardsOf } from './rewards-logic';
 import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './models';
 
 @Component({
@@ -31,6 +31,8 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
 
     @if (data.error()) { <p class="note">{{ data.error() }}</p> }
 
+    @if (view().length) { <p class="tap-hint">👆 Натисни на учасника — відкриється профіль і нагороди</p> }
+
     <ul class="cards">
       @for (p of view(); track p.id) {
         <li>
@@ -55,6 +57,17 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
                 {{ clean(c.text) }}
               </blockquote>
             }
+            <div class="foot">
+              @if (p.icons.length) {
+                <span class="mini" aria-hidden="true">
+                  @for (m of p.icons; track $index) { <span class="mi" [class]="'mi ' + m.tier">{{ m.icon }}</span> }
+                </span>
+                <span class="cnt">{{ p.awards }} {{ awardsWord(p.awards) }}</span>
+              } @else {
+                <span class="cnt">Нагороди — у профілі</span>
+              }
+              <span class="go">Профіль <span class="chev" aria-hidden="true">›</span></span>
+            </div>
           </a>
         </li>
       } @empty {
@@ -82,8 +95,23 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
     .search input { width: 100%; box-sizing: border-box; height: 48px; border-radius: 14px; border: 1px solid #2a2a2a; background: #0f0f0f; color: #fff; padding: 0 16px; font: inherit; font-size: 16px; }
     .search input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
     .cards { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 12px; }
-    .card { display: grid; gap: 12px; padding: 16px; border-radius: 20px; background: var(--card); color: inherit; text-decoration: none; }
-    .card:hover { background: #1a1a1a; }
+    .card { display: grid; gap: 12px; padding: 16px; border-radius: 20px; background: var(--card); color: inherit; text-decoration: none;
+            border: 1px solid transparent; transition: transform .12s ease, background-color .12s ease, border-color .12s ease; -webkit-tap-highlight-color: transparent; }
+    .card:hover { background: #1a1a1a; border-color: #2e2e2e; }
+    .card:active { transform: scale(.98); background: #1b1b1b; }
+    .tap-hint { margin: 16px 0 0; color: var(--muted); font-size: 13px; }
+    .foot { display: flex; align-items: center; gap: 8px; border-top: 1px solid #222; padding-top: 12px; margin-top: -2px; }
+    .mini { display: flex; padding-right: 4px; }
+    .mi { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; line-height: 1; margin-right: -6px; box-shadow: 0 0 0 2px var(--card); }
+    .mi.bronze { background: #3a2412; outline: 1.5px solid #cd7f32; outline-offset: -1.5px; }
+    .mi.silver { background: #24282e; outline: 1.5px solid #c0c7d0; outline-offset: -1.5px; }
+    .mi.gold { background: #33280a; outline: 1.5px solid #ffc83d; outline-offset: -1.5px; }
+    .mi.platinum { background: #0f2a30; outline: 1.5px solid #8fe3f5; outline-offset: -1.5px; }
+    .mi.blue { background: #16273a; outline: 1.5px solid #6ab3f3; outline-offset: -1.5px; }
+    .cnt { color: var(--muted); font-size: 13px; margin-left: 6px; }
+    .go { margin-left: auto; font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 4px; }
+    .go .chev { color: var(--done); font-size: 20px; line-height: 1; margin-top: -2px; transition: transform .12s ease; }
+    .card:hover .go .chev { transform: translateX(2px); }
     .card:focus-visible { outline: 2px solid var(--accent); }
     .top { display: flex; align-items: center; gap: 12px; }
     .avatar { width: 44px; height: 44px; flex: none; border-radius: 50%; background: #262626; display: grid; place-items: center; font-weight: 800; font-size: 18px; }
@@ -122,6 +150,11 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
 })
 export class Home {
   protected readonly daysWord = daysWord;
+  /** 1 нагорода, 2 нагороди, 5 нагород */
+  awardsWord(n: number) {
+    const a = n % 10, b = n % 100;
+    return a === 1 && b !== 11 ? 'нагорода' : a >= 2 && a <= 4 && (b < 12 || b > 14) ? 'нагороди' : 'нагород';
+  }
   data = inject(DataService);
   q = signal('');
   icon = STATUS_ICON;
@@ -145,7 +178,12 @@ export class Home {
     const firsts = firstOfDayCounts(this.data.participants(), ch);
     return this.data.participants()
       .filter((p) => !q || p.name.toLowerCase().includes(q) || p.habit.toLowerCase().includes(q))
-      .map((p) => ({ ...p, streak: currentStreak(p, d), pct: completion(p, d), medal: rewardsOf(p, ch, firsts).latest }))
+      .map((p) => {
+        const r = rewardsOf(p, ch, firsts);
+        // усі отримані: медалі «Шляху» + бонусні (тип, а не ×N) — показуємо 3 останні
+        const got = [...r.path.filter((m) => m.got), ...BONUS.filter((b) => r.bonus[b.key] > 0)];
+        return { ...p, streak: currentStreak(p, d), pct: completion(p, d), medal: r.latest, icons: got.slice(-3).reverse(), awards: got.length };
+      })
       .sort((a, b) => b.streak - a.streak || b.pct - a.pct);
   });
 }

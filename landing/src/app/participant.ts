@@ -1,5 +1,6 @@
 import { Component, computed, inject, input } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Location } from '@angular/common';
+import { Router, RouterLink } from '@angular/router';
 import { DataService } from './data.service';
 import { DayGrid } from './day-grid';
 import { RewardsBlock } from './rewards';
@@ -10,7 +11,7 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
   selector: 'app-participant',
   imports: [RouterLink, DayGrid, RewardsBlock],
   template: `
-    <a class="back" routerLink="/">← Усі учасники</a>
+    <a class="back" routerLink="/" (click)="back($event)">← Усі учасники</a>
     @if (p(); as p) {
       <header>
         <div class="avatar" aria-hidden="true">{{ p.name.charAt(0) }}</div>
@@ -92,6 +93,15 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
 export class ParticipantPage {
   protected readonly daysWord = daysWord;
   private data = inject(DataService);
+  private router = inject(Router);
+  private location = inject(Location);
+  // прийшли зі списку → крок назад в історії: список відкриється на тому ж місці
+  back(e: Event) {
+    const prev = this.router.lastSuccessfulNavigation()?.previousNavigation?.finalUrl;
+    if (!prev || this.router.serializeUrl(prev).split('?')[0] !== '/') return; // відкрили профіль за посиланням — звичайний перехід на головну
+    e.preventDefault();
+    this.location.back();
+  }
   id = input.required<string>();
 
   day = computed(() => this.data.challenge().currentDay);
