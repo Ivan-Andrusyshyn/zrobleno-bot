@@ -52,15 +52,8 @@ export function completion(p: Participant, uptoDay: number): number {
   return Math.round((ok / n) * 100);
 }
 
-/** Прибирає повтор «День 5 ✅ —» на початку коментаря (він уже є в заголовку) */
-export function cleanText(text: string): string {
-  const t = text
-    .replace(/^\s*д[ен]{1,2}ь\s*№?\s*\d{1,2}\s*/iu, '')
-    .replace(/^\s*(✅|✔️|✔|☑️|🟨|🟡|🔶|❌|✖️|✖|⛔)\s*/u, '')
-    .replace(/^\s*[—–-]\s*/u, '')
-    .trim();
-  return t || text.trim();
-}
+/** Прибирає повтор «День 5 ✅ —» на початку коментаря (спільна з ботом функція) */
+export { cleanText } from '../../shared/rewards.js';
 
 /** 1 день, 2 дні, 5 днів */
 export function daysWord(n: number): string {

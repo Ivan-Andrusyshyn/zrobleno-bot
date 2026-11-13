@@ -4,6 +4,7 @@
 import { tg } from "./telegram.js";
 import { store } from "./store.js";
 import { TOTAL_DAYS, todayYmd, dayNumber } from "./parse.js";
+import { quietLines } from "./medals.js";
 
 export const WEEK_DAYS = 7;
 const TIMEZONE = (env) => env.TIMEZONE || "Europe/Kiev";
@@ -25,7 +26,7 @@ export function weekDueOn(day) {
 const range = (week) => [(week - 1) * WEEK_DAYS + 1, week * WEEK_DAYS];
 
 /** Текст підсумку тижня. people/marks — як із store.participantsWithCheckins() */
-export function weekSummaryText({ people, marks }, week, site) {
+export function weekSummaryText({ people, marks }, week, site, extra = []) {
   const [from, to] = range(week);
   const byUser = new Map(people.map((p) => [p.userId, Array(TOTAL_DAYS).fill(null)]));
   for (const m of marks) {
@@ -72,6 +73,7 @@ export function weekSummaryText({ people, marks }, week, site) {
   if (back.length) lines.push(`↩️ Повернулись після пропуску: ${back.join(", ")}`);
   const [nf, nt] = range(week + 1);
   if (nf <= TOTAL_DAYS) lines.push(`🎯 Новий тиждень: дні ${nf}–${Math.min(nt, TOTAL_DAYS)}`);
+  if (extra.length) lines.push("", ...extra);
   lines.push("", `Статистика кожного → ${site}`);
   return lines.join("\n");
 }
@@ -87,13 +89,16 @@ function hourIn(now, timeZone) {
 
 /** Опублікувати підсумок у групі коментарів під постом поточного дня */
 export async function postWeek(env, db, s, week, day, api) {
-  const text = weekSummaryText(await db.participantsWithCheckins(), week, SITE(env));
+  // «тихі» нагороди (Ранок, Сова, Перший…) — рядком у підсумку, якщо медалі в чаті ввімкнено
+  const quiet = s.medalsInChat === true ? await db.unreportedQuiet() : [];
+  const text = weekSummaryText(await db.participantsWithCheckins(), week, SITE(env), quietLines(quiet));
   if (!text) return { posted: false, reason: "немає учасників з відмітками" };
   if (!s.groupId) return { posted: false, reason: "група коментарів не підключена" };
   const root = day ? await db.dayThread(s.groupId, day) : null;
   await api.send(s.groupId, text, root
     ? { reply_parameters: { message_id: root, allow_sending_without_reply: true }, link_preview_options: { is_disabled: true } }
     : { link_preview_options: { is_disabled: true } });
+  await db.markQuietReported(quiet);
   return { posted: true, week, underDayPost: !!root };
 }
 

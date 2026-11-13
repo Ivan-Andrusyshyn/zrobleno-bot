@@ -13,6 +13,11 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS checkins (
      user_id INTEGER NOT NULL, day INTEGER NOT NULL, status TEXT NOT NULL, note TEXT, text TEXT,
      msg_id INTEGER, updated_at TEXT NOT NULL, PRIMARY KEY (user_id, day))`,
+  // нагороди, про які бот уже знає: key = «path:5», «phoenix:2»…; instant — вітати одразу,
+  // reported — «тиха» нагорода вже була в тижневому підсумку (або оголошувати не треба)
+  `CREATE TABLE IF NOT EXISTS awards (
+     user_id INTEGER NOT NULL, key TEXT NOT NULL, instant INTEGER NOT NULL, at TEXT NOT NULL,
+     reported INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, key))`,
 ];
 
 // Нові колонки для вже існуючих баз (додаються один раз; помилку «вже є» ігноруємо)
@@ -67,6 +72,32 @@ export async function store(db) {
     },
     async unclaimWeek(week) {
       await db.prepare("DELETE FROM settings WHERE key = ?").bind(`weekly:${week}`).run();
+    },
+    async awardKeysOf(userId) {
+      const { results } = await db.prepare("SELECT key FROM awards WHERE user_id = ?").bind(userId).all();
+      return new Set(results.map((r) => r.key));
+    },
+    /** Записати нагороди; повертає лише ті, яких ще не було (без дублів навіть при одночасних запитах) */
+    async addAwards(userId, list, reported) {
+      const added = [];
+      for (const a of list) {
+        const r = await db.prepare(
+          "INSERT INTO awards (user_id, key, instant, at, reported) VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id, key) DO NOTHING RETURNING key",
+        ).bind(userId, a.key, a.instant ? 1 : 0, now(), reported ? 1 : 0).first();
+        if (r) added.push(a);
+      }
+      return added;
+    },
+    /** «Тихі» нагороди, яких ще не було в тижневому підсумку (лише видимі учасники) */
+    async unreportedQuiet() {
+      const { results } = await db.prepare(
+        "SELECT a.user_id AS userId, a.key, COALESCE(p.name, p.tg_name) AS name FROM awards a JOIN participants p ON p.user_id = a.user_id " +
+        "WHERE a.instant = 0 AND a.reported = 0 AND p.hidden = 0 ORDER BY p.joined_at, a.at",
+      ).all();
+      return results;
+    },
+    async markQuietReported(rows) {
+      for (const r of rows) await db.prepare("UPDATE awards SET reported = 1 WHERE user_id = ? AND key = ?").bind(r.userId, r.key).run();
     },
     async maxDay() {
       const r = await db.prepare("SELECT MAX(num) AS d FROM threads WHERE kind = 'day'").first();

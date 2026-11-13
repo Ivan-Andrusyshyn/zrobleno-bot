@@ -6,6 +6,7 @@ import {
   displayName, todayYmd, dayNumber, parseDate,
 } from "./parse.js";
 import { weekSummaryText, postWeek, WEEK_DAYS } from "./weekly.js";
+import { afterCheckin, seedAwards, medalsReport } from "./medals.js";
 
 const TIMEZONE = (env) => env.TIMEZONE || "Europe/Kiev";
 // Реакція 👍 на зараховану відмітку. Вимкнути: змінна REACT_ON_CHECKIN = 0
@@ -15,6 +16,7 @@ const REACT = (env) => env.REACT_ON_CHECKIN !== "0";
 export const ADMIN_COMMANDS = [
   { command: "status", description: "Скільки учасників і відміток" },
   { command: "week", description: "Підсумок тижня (week 2 · week post)" },
+  { command: "medals", description: "Медалі в чаті (medals on · off)" },
   { command: "date", description: "Дата старту челенджу" },
   { command: "hideme", description: "Сховати мене з лендінгу" },
   { command: "showme", description: "Показати мене на лендінгу" },
@@ -133,12 +135,16 @@ export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
     }
     if (!day) return skip(db, `не вдалося визначити день (пост: ${thread?.kind ?? "невідомий"}, старт: ${s.startDate ?? "не задано"})`, m);
     await db.touchParticipant(m.from.id, tgName);
+    // медалі: перед першою відміткою після запуску — тихо запамʼятати вже наявні (без «залпу»)
+    await seedAwards(db, s, env).catch((e) => console.error("medals seed", e));
     await db.saveCheckin(m.from.id, day, status, parseNote(text), text.slice(0, 1000), m.message_id);
     if (u.message && REACT(env)) {
       await api.call("setMessageReaction", {
         chat_id: m.chat.id, message_id: m.message_id, reaction: [{ type: "emoji", emoji: "👍" }],
       }).catch(() => {});
     }
+    // нова медаль → привітання відповіддю на коментар (якщо /medals on); помилка тут не ламає відмітку
+    await afterCheckin(env, db, api, m.from.id, m.chat.id, m.message_id).catch((e) => console.error("medals", e));
     return;
   }
 
@@ -221,6 +227,17 @@ async function handleCommand(m, db, api, env) {
       const text = weekSummaryText(await db.participantsWithCheckins(), week, env.SITE_URL || "https://zrobleno.pages.dev");
       return reply(text ? `Попередній перегляд (у групу не відправлено):\n\n${text}` : "Поки немає учасників з відмітками.", { link_preview_options: { is_disabled: true } });
     }
+    case "/medals": {
+      // /medals — хто що має і що чекає підсумку (тільки тобі); /medals on | off — вітати в чаті
+      if (args[0] === "on" || args[0] === "off") {
+        await seedAwards(db, s, env); // щоб після ввімкнення не було «залпу» за минулі дні
+        await db.set({ medalsInChat: args[0] === "on" });
+        return reply(args[0] === "on"
+          ? "Медалі в чаті увімкнено ✅\nНові медалі «Шляху», 🪶 Фенікс і 📆 7 з 7 — одразу відповіддю на коментар; інші — у тижневому підсумку."
+          : "Медалі в чаті вимкнено ⏸ (на сайті нагороди лишаються).");
+      }
+      return reply(await medalsReport(db, await db.all(), env));
+    }
     default:
       return reply(HELP_ADMIN);
   }
@@ -233,6 +250,8 @@ const HELP_ADMIN = `Команди адміна:
 /week — підсумок останнього тижня (тільки тобі, для перевірки)
 /week 2 — підсумок 2-го тижня
 /week post — опублікувати підсумок у групі зараз
+/medals — хто які медалі має (тільки тобі)
+/medals on · /medals off — вітати з новими медалями в чаті
 
 Підсумки тижня бот сам публікує на 8, 15, 22 і 29 день з першим коментарем після 18:00, під постом дня.
 
