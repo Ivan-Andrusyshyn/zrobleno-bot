@@ -127,3 +127,40 @@ test("функції: секрет вебхука, setup, health", async () => {
   const h2 = await (await healthFn({ env: { ...env, BOT_TOKEN: undefined }, request: new Request("https://x/api/health") })).json();
   assert.equal(h2.ok, false);
 });
+
+test("час першої відмітки: редагування й повторна відмітка його не змінюють", async () => {
+  const { __resetSchemaForTests, store } = await import("../store.js");
+  const { participantsPayload } = await import("../handler.js");
+  __resetSchemaForTests();
+  const env = { DB: fakeD1() };
+  const db = await store(env.DB);
+  const RealDate = Date;
+  let t = RealDate.parse("2026-11-12T05:30:00Z");
+  globalThis.Date = class extends RealDate { constructor(...a) { super(...(a.length ? a : [t])); } static now() { return t; } };
+  try {
+    await env.DB.prepare("INSERT INTO participants (user_id, tg_name, joined_at) VALUES (1, 'Оля', ?)").bind(new Date().toISOString()).run();
+    await db.saveCheckin(1, 3, "min", null, "🟨 мінімум", 10);
+    t = RealDate.parse("2026-11-12T12:00:00Z");
+    await db.saveCheckin(1, 3, "done", null, "✅ таки зробила", 11);
+    const { participants } = await participantsPayload(env);
+    assert.equal(participants[0].days[2], "done");
+    assert.equal(participants[0].times[2], "2026-11-12T05:30:00.000Z");
+    assert.equal(participants[0].comments[0].at, "2026-11-12T12:00:00.000Z"); // «останнє оновлення» як і раніше
+  } finally { globalThis.Date = RealDate; }
+});
+
+test("міграція: стара база без first_at — працює, час береться з updated_at", async () => {
+  const { __resetSchemaForTests, store } = await import("../store.js");
+  __resetSchemaForTests();
+  const DB = fakeD1();
+  await DB.prepare(`CREATE TABLE checkins (user_id INTEGER NOT NULL, day INTEGER NOT NULL, status TEXT NOT NULL, note TEXT, text TEXT, msg_id INTEGER, updated_at TEXT NOT NULL, PRIMARY KEY (user_id, day))`).run();
+  await DB.prepare("INSERT INTO checkins VALUES (1, 1, 'done', null, '✅', 1, '2026-11-10T06:00:00.000Z')").run();
+  const db = await store(DB);
+  await DB.prepare("INSERT INTO participants (user_id, tg_name, joined_at) VALUES (1, 'Оля', 'x')").run();
+  let r = await db.participantsWithCheckins();
+  assert.equal(r.marks[0].firstAt, "2026-11-10T06:00:00.000Z");
+  await db.saveCheckin(1, 1, "min", null, "🟨", 2); // редагування старого запису
+  r = await db.participantsWithCheckins();
+  assert.equal(r.marks[0].firstAt, "2026-11-10T06:00:00.000Z");
+  assert.equal(r.marks[0].status, "min");
+});

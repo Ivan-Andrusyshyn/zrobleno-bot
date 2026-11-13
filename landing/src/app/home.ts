@@ -3,6 +3,7 @@ import { RouterLink } from '@angular/router';
 import { DataService } from './data.service';
 import { DayGrid } from './day-grid';
 import { Rules } from './rules';
+import { firstOfDayCounts, rewardsOf } from './rewards-logic';
 import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './models';
 
 @Component({
@@ -39,6 +40,7 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
               <div class="who">
                 <h2>{{ p.name }}</h2>
                 <p>{{ p.habit }}</p>
+                @if (p.medal; as m) { <span class="medal" [class]="'medal ' + m.tier">{{ m.icon }} {{ m.name }}</span> }
               </div>
               <div class="streak" [attr.aria-label]="p.streak + ' ' + daysWord(p.streak) + ' поспіль'">
                 <b>@if (p.streak > 0) {🔥 }{{ p.streak }}</b><span>{{ daysWord(p.streak) }}<br />поспіль</span>
@@ -104,6 +106,11 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
     .lg.min { background: var(--min, #ffc83d); }
     .lg.miss { background: var(--miss); }
     .note { color: var(--muted); font-size: 13px; text-align: center; margin: 16px 0 0; }
+    .medal { display: inline-block; margin-top: 4px; border-radius: 999px; padding: 1px 8px; font-size: 11px; font-weight: 700; color: #fff; white-space: nowrap; }
+    .medal.bronze { background: #3a2412; box-shadow: inset 0 0 0 1px #cd7f32; }
+    .medal.silver { background: #24282e; box-shadow: inset 0 0 0 1px #c0c7d0; }
+    .medal.gold { background: #33280a; box-shadow: inset 0 0 0 1px #ffc83d; }
+    .medal.platinum { background: #0f2a30; box-shadow: inset 0 0 0 1px #8fe3f5; }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
     @media (min-width: 720px) {
       .cards { grid-template-columns: repeat(2, 1fr); }
@@ -134,9 +141,11 @@ export class Home {
   view = computed(() => {
     const q = this.q().trim().toLowerCase();
     const d = this.day();
+    const ch = this.data.challenge();
+    const firsts = firstOfDayCounts(this.data.participants(), ch);
     return this.data.participants()
       .filter((p) => !q || p.name.toLowerCase().includes(q) || p.habit.toLowerCase().includes(q))
-      .map((p) => ({ ...p, streak: currentStreak(p, d), pct: completion(p, d) }))
+      .map((p) => ({ ...p, streak: currentStreak(p, d), pct: completion(p, d), medal: rewardsOf(p, ch, firsts).latest }))
       .sort((a, b) => b.streak - a.streak || b.pct - a.pct);
   });
 }

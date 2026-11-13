@@ -2,11 +2,13 @@ import { Component, computed, inject, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { DataService } from './data.service';
 import { DayGrid } from './day-grid';
+import { RewardsBlock } from './rewards';
+import { firstOfDayCounts, rewardsOf } from './rewards-logic';
 import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './models';
 
 @Component({
   selector: 'app-participant',
-  imports: [RouterLink, DayGrid],
+  imports: [RouterLink, DayGrid, RewardsBlock],
   template: `
     <a class="back" routerLink="/">← Усі учасники</a>
     @if (p(); as p) {
@@ -14,6 +16,9 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
         <div class="avatar" aria-hidden="true">{{ p.name.charAt(0) }}</div>
         <h1>{{ p.name }}</h1>
         <p class="habit">{{ p.habit }}</p>
+        @if (rw()?.latest; as l) {
+          <span class="badge" [class]="'badge ' + l.tier">{{ l.icon }} {{ l.name }}</span>
+        }
       </header>
 
       <section class="stats">
@@ -21,6 +26,8 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
         <div class="stat"><b>{{ pct() }}%</b><span>виконано</span></div>
         <div class="stat"><b>{{ count('done') }}/{{ count('min') }}/{{ count('miss') }}</b><span>✅ / 🟨 / ❌</span></div>
       </section>
+
+      @if (rw(); as r) { <app-rewards [r]="r" /> }
 
       <app-day-grid [days]="p.days" [currentDay]="day()" [big]="true" />
 
@@ -75,6 +82,11 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
     .c-at { margin-left: auto; color: var(--muted); font-size: 12px; }
     .c-text { margin: 6px 0 0; font-size: 15px; line-height: 1.45; white-space: pre-line; word-break: break-word; }
     :host { display: block; max-width: 560px; margin: 0 auto; }
+    .badge { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; border-radius: 999px; padding: 4px 12px; font-size: 13px; font-weight: 700; color: #fff; }
+    .badge.bronze { background: #3a2412; box-shadow: inset 0 0 0 1.5px #cd7f32; }
+    .badge.silver { background: #24282e; box-shadow: inset 0 0 0 1.5px #c0c7d0; }
+    .badge.gold { background: #33280a; box-shadow: inset 0 0 0 1.5px #ffc83d; }
+    .badge.platinum { background: #0f2a30; box-shadow: inset 0 0 0 1.5px #8fe3f5; }
   `,
 })
 export class ParticipantPage {
@@ -86,6 +98,12 @@ export class ParticipantPage {
   p = computed(() => this.data.byId(Number(this.id())));
   streak = computed(() => (this.p() ? currentStreak(this.p()!, this.day()) : 0));
   pct = computed(() => (this.p() ? completion(this.p()!, this.day()) : 0));
+  rw = computed(() => {
+    const p = this.p();
+    if (!p) return null;
+    const ch = this.data.challenge();
+    return rewardsOf(p, ch, firstOfDayCounts(this.data.participants(), ch));
+  });
   icon = STATUS_ICON;
   clean = cleanText;
   fmt(iso: string) {

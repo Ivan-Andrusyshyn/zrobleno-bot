@@ -45,10 +45,12 @@ export async function participantsPayload(env) {
   const { people, marks } = await db.participantsWithCheckins();
   const days = new Map(people.map((p) => [p.userId, Array(TOTAL_DAYS).fill(null)]));
   const comments = new Map(people.map((p) => [p.userId, []]));
+  const times = new Map(people.map((p) => [p.userId, Array(TOTAL_DAYS).fill(null)])); // час першої відмітки дня
   for (const m of marks) {
     const arr = days.get(m.userId);
     if (!arr || m.day < 1 || m.day > TOTAL_DAYS) continue;
     arr[m.day - 1] = m.status;
+    times.get(m.userId)[m.day - 1] = m.firstAt ?? m.updatedAt ?? null;
     if (m.text) comments.get(m.userId).push({ day: m.day, status: m.status, text: m.text, at: m.updatedAt });
   }
   return {
@@ -60,6 +62,7 @@ export async function participantsPayload(env) {
       minimum: p.minimum || "—",
       why: p.why || undefined,
       days: days.get(p.userId),
+      times: times.get(p.userId),
       comments: comments.get(p.userId).sort((a, b) => b.day - a.day),
     })),
   };

@@ -15,12 +15,23 @@ const SCHEMA = [
      msg_id INTEGER, updated_at TEXT NOT NULL, PRIMARY KEY (user_id, day))`,
 ];
 
+// Нові колонки для вже існуючих баз (додаються один раз; помилку «вже є» ігноруємо)
+const MIGRATIONS = [
+  // час ПЕРШОЇ відмітки дня (для нагород «Ранній птах», «Нічна сова», «Перший у дні»);
+  // updated_at, як і раніше, — час останньої зміни
+  `ALTER TABLE checkins ADD COLUMN first_at TEXT`,
+];
+
 let schemaReady = null;
 const now = () => new Date().toISOString();
 
 export async function store(db) {
   if (!db) throw new Error("Немає бази D1: додай binding DB (Settings → Bindings → D1)");
-  if (!schemaReady) schemaReady = db.batch(SCHEMA.map((s) => db.prepare(s))).catch((e) => { schemaReady = null; throw e; });
+  if (!schemaReady) {
+    schemaReady = db.batch(SCHEMA.map((s) => db.prepare(s)))
+      .then(async () => { for (const m of MIGRATIONS) await db.prepare(m).run().catch(() => {}); })
+      .catch((e) => { schemaReady = null; throw e; });
+  }
   await schemaReady;
 
   return {
@@ -77,15 +88,17 @@ export async function store(db) {
 
     async saveCheckin(userId, day, status, note, text, msgId) {
       await db.prepare(
-        "INSERT INTO checkins (user_id, day, status, note, text, msg_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) " +
-        "ON CONFLICT(user_id, day) DO UPDATE SET status = excluded.status, note = excluded.note, text = excluded.text, msg_id = excluded.msg_id, updated_at = excluded.updated_at",
-      ).bind(userId, day, status, note ?? null, text ?? null, msgId ?? null, now()).run();
+        "INSERT INTO checkins (user_id, day, status, note, text, msg_id, updated_at, first_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) " +
+        "ON CONFLICT(user_id, day) DO UPDATE SET status = excluded.status, note = excluded.note, text = excluded.text, msg_id = excluded.msg_id, updated_at = excluded.updated_at, " +
+        // first_at не перезаписуємо; для старих записів без нього беремо попередній updated_at
+        "first_at = COALESCE(checkins.first_at, checkins.updated_at)",
+      ).bind(userId, day, status, note ?? null, text ?? null, msgId ?? null, now(), now()).run();
     },
 
     async participantsWithCheckins() {
       const [p, c] = await db.batch([
         db.prepare("SELECT user_id AS userId, tg_name AS tgName, name, habit, minimum, why FROM participants WHERE hidden = 0 ORDER BY joined_at"),
-        db.prepare("SELECT c.user_id AS userId, c.day, c.status, c.text, c.updated_at AS updatedAt FROM checkins c JOIN participants p ON p.user_id = c.user_id WHERE p.hidden = 0"),
+        db.prepare("SELECT c.user_id AS userId, c.day, c.status, c.text, c.updated_at AS updatedAt, COALESCE(c.first_at, c.updated_at) AS firstAt FROM checkins c JOIN participants p ON p.user_id = c.user_id WHERE p.hidden = 0"),
       ]);
       return { people: p.results, marks: c.results };
     },

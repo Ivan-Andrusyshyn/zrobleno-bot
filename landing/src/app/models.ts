@@ -15,6 +15,8 @@ export interface Participant {
   why?: string;
   /** 30 значень: статус кожного дня (null — відмітки немає) */
   days: DayStatus[];
+  /** 30 значень: коли людина вперше відмітила цей день (ISO), null — немає відмітки */
+  times?: (string | null)[];
   /** Повні тексти відміток, новіші зверху */
   comments?: CheckinComment[];
 }

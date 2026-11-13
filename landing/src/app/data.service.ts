@@ -63,7 +63,10 @@ function demoData(): ParticipantsResponse {
           text: `День ${d + 1} ${s === 'done' ? '✅' : s === 'min' ? '🟨' : '❌'} — ${texts[s][(d + i) % texts[s].length]}` })
         .filter((c): c is NonNullable<typeof c> => !!c)
         .reverse();
-      return { id: i + 1, name, habit, minimum, days, comments };
+      // демо-час відмітки: хтось жайворонок, хтось сова, решта ввечері
+      const hourUtc = [5, 21, 16, 6, 16, 21, 15, 16][i % 8];
+      const times = days.map((s, d) => s && new Date(Date.UTC(2026, 10, 10 + d, hourUtc, (i * 7 + d * 3) % 60)).toISOString());
+      return { id: i + 1, name, habit, minimum, days, times, comments };
     }),
   };
 }
