@@ -11,13 +11,6 @@ const TIMEZONE = (env) => env.TIMEZONE || "Europe/Kiev";
 // Реакція 👍 на зараховану відмітку. Вимкнути: змінна REACT_ON_CHECKIN = 0
 const REACT = (env) => env.REACT_ON_CHECKIN !== "0";
 
-export const BOT_COMMANDS = [
-  { command: "status", description: "Скільки учасників і відміток" },
-  { command: "hideme", description: "Сховати мене з лендінгу" },
-  { command: "showme", description: "Показати мене на лендінгу" },
-  { command: "help", description: "Допомога" },
-];
-
 // Меню адміна: бачить лише він (scope = його особистий чат)
 export const ADMIN_COMMANDS = [
   { command: "status", description: "Скільки учасників і відміток" },
@@ -27,6 +20,11 @@ export const ADMIN_COMMANDS = [
   { command: "showme", description: "Показати мене на лендінгу" },
   { command: "help", description: "Допомога" },
 ];
+/** Прибрати меню команд для всіх, крім адмінів (у них своє меню — scope chat) */
+export const hideMenuForOthers = async (api) => {
+  await api.call("deleteMyCommands", { scope: { type: "all_private_chats" } });
+  await api.call("deleteMyCommands", { scope: { type: "default" } });
+};
 export const setAdminMenu = (api, chatId) =>
   api.call("setMyCommands", { commands: ADMIN_COMMANDS, scope: { type: "chat", chat_id: Number(chatId) } });
 
@@ -164,10 +162,16 @@ async function handleCommand(m, db, api, env) {
   const isAdmin = admins.includes(String(m.from.id));
   const reply = (text, extra) => api.send(m.chat.id, text, extra);
 
+  // В особистих бот працює ЛИШЕ з адміном. Усім іншим — повна тиша (жодних відповідей),
+  // єдиний виняток — /admin з правильним кодом. Відмітки в групі коментарів це не зачіпає.
+  if (!isAdmin) {
+    if (cmd !== "/admin" || !env.ADMIN_CODE || arg !== env.ADMIN_CODE) return;
+  }
+
   switch (cmd) {
     case "/start":
     case "/help":
-      return reply(isAdmin ? HELP_ADMIN : HELP_USER);
+      return reply(HELP_ADMIN);
     case "/hideme":
       await db.setHidden(m.from.id, true);
       return reply("Готово, тебе не видно на лендінгу. Відмітки все одно рахуються. Повернути: /showme");
@@ -175,13 +179,13 @@ async function handleCommand(m, db, api, env) {
       await db.setHidden(m.from.id, false);
       return reply("Готово, ти знову на лендінгу ✅");
     case "/admin":
-      if (!env.ADMIN_CODE || arg !== env.ADMIN_CODE) return reply("Невірний код.");
+      if (!env.ADMIN_CODE || arg !== env.ADMIN_CODE) return reply("Невірний код."); // сюди доходить лише адмін
       if (!isAdmin) await db.set({ admins: [...admins, String(m.from.id)] });
       await setAdminMenu(api, m.chat.id).catch(() => {});
+      await hideMenuForOthers(api).catch(() => {});
       return reply("Ти адмін бота ✅\n\nДалі: додай мене адміном у групу коментарів каналу, потім /status");
   }
 
-  if (!isAdmin) return reply(HELP_USER);
 
   switch (cmd) {
     case "/status": {
@@ -221,16 +225,6 @@ async function handleCommand(m, db, api, env) {
       return reply(HELP_ADMIN);
   }
 }
-
-const HELP_USER = `Я бот челенджу «Зроблено.» 👋
-Рахую відмітки з коментарів під постами «День N».
-
-Як відмітитися: під постом свого дня напиши
-День 5 ✅ — 15 сторінок
-✅ зроблено · 🟨 мінімум · ❌ пропуск
-
-/hideme — сховати себе з лендінгу
-/showme — повернути`;
 
 const HELP_ADMIN = `Команди адміна:
 /status — група, поточний день, скільки учасників і відміток

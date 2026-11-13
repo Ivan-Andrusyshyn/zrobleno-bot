@@ -26,8 +26,12 @@ const olena = { id: 7, is_bot: false, first_name: "Олена", last_name: "Ко
 const andrii = { id: 8, is_bot: false, first_name: "Андрій" };
 
 test("повний сценарій на D1", async () => {
-  await pm(42, "/admin wrong");
-  assert.match(sent.at(-1).text, /Невірний код/);
+  // не-адмін: бот мовчить на все, навіть на неправильний код
+  for (const t of ["/start", "/help", "/status", "/hideme", "привіт", "/admin wrong"]) {
+    const before = sent.length;
+    await pm(42, t);
+    assert.equal(sent.filter((x, i) => i >= before && x.chat_id === 42).length, 0, `відповів на «${t}»`);
+  }
   await pm(42, "/admin code1");
   assert.match(sent.at(-1).text, /Ти адмін/);
 
@@ -53,9 +57,8 @@ test("повний сценарій на D1", async () => {
   assert.equal(o.comments[0].text, "🟨 — лише 1 сторінка");
   assert.deepEqual([a.name, a.days[1], a.days[2]], ["Андрій", "miss", null]);
 
+  // учасник не може керувати ботом з особистих: /hideme ігнорується
   await pm(8, "/hideme");
-  assert.equal((await participantsPayload(env)).participants.length, 1);
-  await pm(8, "/showme");
   assert.equal((await participantsPayload(env)).participants.length, 2);
 
   await pm(42, "/date 10.11.2026");

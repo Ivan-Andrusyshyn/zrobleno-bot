@@ -79,7 +79,7 @@ test("розклад: публікує раз, у день 8 після 18:00, �
   assert.match(sent.at(-1).text, /Попередній перегляд[\s\S]*Підсумки 1-го тижня/);
   assert.equal(sent.at(-1).chat_id, 42);
   await upd({ message_id: 3, chat: { id: 9, type: "private" }, from: { id: 9 }, text: "/week" });
-  assert.doesNotMatch(sent.at(-1).text, /Підсумки/);
+  assert.equal(sent.filter((x) => x.chat_id === 9).length, 0); // не-адміну бот не відповідає взагалі
   assert.equal(sent.filter((x) => String(x.chat_id) === String(G)).length, before);
 
   // HTTP-ендпойнт: без ключа — 403
