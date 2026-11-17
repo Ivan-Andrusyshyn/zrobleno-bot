@@ -68,8 +68,9 @@ test("перший запуск у живому челенджі: наявні �
     const { pm, mark, chat, env } = await setup();
     // імітуємо базу «до оновлення»: відмітки є, а записів про медалі — ні
     for (let d = 1; d <= 2; d++) await mark(d, "✅");
-    const db = await store(env.DB);
-    await env.DB.prepare("DELETE FROM awards").run();
+    const base = await store(env.DB);
+    const db = base.forStream((await base.streams())[0]);
+    await env.DB.prepare("DELETE FROM stream_awards").run();
     await db.set({ awardsSeeded: false, medalsInChat: true });
     await mark(3, "✅"); // 🔥 Розігрів — нова, а 👟 Старт уже була
     assert.equal(chat().length, 1);
@@ -108,7 +109,8 @@ test("«тихі» нагороди — рядком у тижневому пі�
     for (let d = 1; d <= 7; d++) await mark(d, "✅", { hour: 7 }); // до 9:00 → 🌅 Ранок ×2
     const instantTexts = chat().map((m) => m.text).join("\n");
     assert.doesNotMatch(instantTexts, /Ранок|Ранній птах/, "Ранок не вітається одразу");
-    const db = await store(env.DB);
+    const base = await store(env.DB);
+    const db = base.forStream((await base.streams())[0]);
     const s = await db.all();
     await postWeek(env, db, s, 1, 8, api);
     const sum = chat().at(-1).text;

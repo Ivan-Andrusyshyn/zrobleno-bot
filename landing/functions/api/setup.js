@@ -1,6 +1,6 @@
 // Cloudflare Pages Function: одноразове підключення вебхука → відкрий /api/setup?key=WEBHOOK_SECRET
 import { tg } from "../../server/telegram.js";
-import { hideMenuForOthers, setAdminMenu } from "../../server/handler.js";
+import { hideMenuForOthers, setAdminMenu, ALLOWED_UPDATES } from "../../server/handler.js";
 import { store } from "../../server/store.js";
 
 export async function onRequestGet({ request, env }) {
@@ -14,7 +14,7 @@ export async function onRequestGet({ request, env }) {
     const hook = `${url.origin}/api/tg`;
     await api.call("setWebhook", {
       url: hook, secret_token: env.WEBHOOK_SECRET,
-      allowed_updates: ["message", "edited_message", "my_chat_member"],
+      allowed_updates: ALLOWED_UPDATES,
     });
     await hideMenuForOthers(api); // учасникам меню не показуємо — бот в особистих відповідає лише адміну
     const admins = env.DB ? (await (await store(env.DB)).all()).admins || [] : [];

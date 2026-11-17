@@ -136,12 +136,14 @@ test("час першої відмітки: редагування й повто
   const { participantsPayload } = await import("../handler.js");
   __resetSchemaForTests();
   const env = { DB: fakeD1() };
-  const db = await store(env.DB);
+  const base = await store(env.DB);
   const RealDate = Date;
   let t = RealDate.parse("2026-11-12T05:30:00Z");
   globalThis.Date = class extends RealDate { constructor(...a) { super(...(a.length ? a : [t])); } static now() { return t; } };
   try {
-    await env.DB.prepare("INSERT INTO participants (user_id, tg_name, joined_at) VALUES (1, 'Оля', ?)").bind(new Date().toISOString()).run();
+    const sid = await base.createStream({ name: "Листопад 2026", groupId: "-1", startDate: "2026-11-10" });
+    const db = base.forStream(await base.stream(sid));
+    await db.touchParticipant(1, "Оля");
     await db.saveCheckin(1, 3, "min", null, "🟨 мінімум", 10);
     t = RealDate.parse("2026-11-12T12:00:00Z");
     await db.saveCheckin(1, 3, "done", null, "✅ таки зробила", 11);
@@ -152,18 +154,42 @@ test("час першої відмітки: редагування й повто
   } finally { globalThis.Date = RealDate; }
 });
 
-test("міграція: стара база без first_at — працює, час береться з updated_at", async () => {
+test("міграція зі старої бази (без потоків і без first_at): усе стає потоком №1", async () => {
   const { __resetSchemaForTests, store } = await import("../store.js");
   __resetSchemaForTests();
   const DB = fakeD1();
-  await DB.prepare(`CREATE TABLE checkins (user_id INTEGER NOT NULL, day INTEGER NOT NULL, status TEXT NOT NULL, note TEXT, text TEXT, msg_id INTEGER, updated_at TEXT NOT NULL, PRIMARY KEY (user_id, day))`).run();
-  await DB.prepare("INSERT INTO checkins VALUES (1, 1, 'done', null, '✅', 1, '2026-11-10T06:00:00.000Z')").run();
-  const db = await store(DB);
-  await DB.prepare("INSERT INTO participants (user_id, tg_name, joined_at) VALUES (1, 'Оля', 'x')").run();
+  // стара база, якою вона була до потоків
+  for (const q of [
+    `CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+    `CREATE TABLE threads (chat_id TEXT NOT NULL, msg_id INTEGER NOT NULL, kind TEXT NOT NULL, num INTEGER, created_at TEXT NOT NULL, PRIMARY KEY (chat_id, msg_id))`,
+    `CREATE TABLE participants (user_id INTEGER PRIMARY KEY, tg_name TEXT, name TEXT, habit TEXT, minimum TEXT, why TEXT, hidden INTEGER NOT NULL DEFAULT 0, joined_at TEXT NOT NULL)`,
+    `CREATE TABLE checkins (user_id INTEGER NOT NULL, day INTEGER NOT NULL, status TEXT NOT NULL, note TEXT, text TEXT, msg_id INTEGER, updated_at TEXT NOT NULL, PRIMARY KEY (user_id, day))`,
+    `INSERT INTO settings VALUES ('groupId', '"-100777"'), ('groupTitle', '"Чат"'), ('startDate', '"2026-11-10"'), ('weekly:1', '"x"')`,
+    `INSERT INTO threads VALUES ('-100777', 100, 'day', 1, '2026-11-10T07:00:00.000Z')`,
+    `INSERT INTO participants (user_id, tg_name, name, habit, minimum, why, joined_at) VALUES (1, 'Оля', 'Оля', 'Читання', '1 сторінка', 'бо так', '2026-11-09T10:00:00.000Z')`,
+    `INSERT INTO checkins VALUES (1, 1, 'done', null, '✅', 1, '2026-11-10T06:00:00.000Z')`,
+  ]) await DB.prepare(q).run();
+  const base = await store(DB);
+  const list = await base.streams();
+  assert.equal(list.length, 1);
+  assert.deepEqual([list[0].id, list[0].name, list[0].groupId, list[0].startDate, list[0].status], [1, "Листопад 2026", "-100777", "2026-11-10", "active"]);
+  const db = base.forStream(list[0]);
   let r = await db.participantsWithCheckins();
+  assert.equal(r.people[0].habit, "Читання");
   assert.equal(r.marks[0].firstAt, "2026-11-10T06:00:00.000Z");
+  assert.equal((await base.thread("-100777", 100)).streamId, 1);
+  assert.equal(await db.claimWeek(1), false, "заявка на 1-й тиждень перенесена — підсумок не повториться");
   await db.saveCheckin(1, 1, "min", null, "🟨", 2); // редагування старого запису
   r = await db.participantsWithCheckins();
   assert.equal(r.marks[0].firstAt, "2026-11-10T06:00:00.000Z");
   assert.equal(r.marks[0].status, "min");
+  // для відкату: стара таблиця теж оновилась
+  assert.equal((await DB.prepare("SELECT status FROM checkins WHERE user_id = 1 AND day = 1").first()).status, "min");
+  // резервні копії
+  assert.equal((await DB.prepare("SELECT COUNT(*) AS n FROM bak_streams_checkins").first()).n, 1);
+  // повторна ініціалізація нічого не дублює
+  __resetSchemaForTests();
+  const again = await store(DB);
+  assert.equal((await again.streams()).length, 1);
+  assert.equal((await DB.prepare("SELECT COUNT(*) AS n FROM stream_checkins").first()).n, 1);
 });

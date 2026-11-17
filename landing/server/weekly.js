@@ -108,7 +108,16 @@ export async function postWeek(env, db, s, week, day, api) {
  * Публікує лише раз на тиждень: у день 8/15/22/29, не раніше 18:00 за Києвом.
  */
 export async function runWeekly(env, { now = new Date(), api } = {}) {
-  const db = await store(env.DB);
+  const base = await store(env.DB);
+  // кожен активний потік зі своєю групою — свій календар підсумків
+  const list = (await base.streams()).filter((x) => x.status === "active" && x.groupId);
+  if (!list.length) return { posted: false, reason: "немає активних потоків" };
+  const results = [];
+  for (const st of list) results.push({ streamId: st.id, ...(await runWeeklyFor(env, base.forStream(st), now, api)) });
+  return results.length === 1 ? results[0] : { posted: results.some((r) => r.posted), results };
+}
+
+async function runWeeklyFor(env, db, now, api) {
   const s = await db.all();
   const day = await currentDayOf(db, s, env, now);
   const week = weekDueOn(day);

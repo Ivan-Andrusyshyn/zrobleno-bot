@@ -1,3 +1,5 @@
+import { store } from "../../server/store.js";
+import { currentStream } from "../../server/streams.js";
 // GET /api/health — перевірка: база, секрети і стан вебхука Telegram (без розкриття значень)
 export async function onRequestGet({ env, request }) {
   let db = false;
@@ -25,20 +27,25 @@ export async function onRequestGet({ env, request }) {
 
   let settings = null;
   try {
-    const { results } = await env.DB.prepare("SELECT key, value FROM settings").all();
-    const s = Object.fromEntries(results.map((x) => [x.key, JSON.parse(x.value)]));
+    const base = await store(env.DB);
+    const g = await base.all();
+    const streams = await base.streams();
+    const cur = await currentStream(base, env);
     const c = await env.DB.batch([
-      env.DB.prepare("SELECT kind, COUNT(*) AS n FROM threads GROUP BY kind"),
-      env.DB.prepare("SELECT COUNT(*) AS n FROM participants"),
-      env.DB.prepare("SELECT COUNT(*) AS n FROM checkins"),
+      env.DB.prepare("SELECT kind, COUNT(*) AS n FROM threads WHERE stream_id = ? GROUP BY kind").bind(cur?.id ?? -1),
+      env.DB.prepare("SELECT COUNT(*) AS n FROM stream_members WHERE stream_id = ?").bind(cur?.id ?? -1),
+      env.DB.prepare("SELECT COUNT(*) AS n FROM stream_checkins WHERE stream_id = ?").bind(cur?.id ?? -1),
     ]);
     settings = {
-      admins: (s.admins || []).length, group: s.groupTitle || null, startDate: s.startDate || null,
+      admins: (g.admins || []).length,
+      stream: cur ? { id: cur.id, name: cur.name, status: cur.status } : null,
+      streams: streams.length,
+      group: cur?.groupTitle || null, startDate: cur?.startDate || null,
       posts: Object.fromEntries(c[0].results.map((r) => [r.kind, r.n])),
       participants: c[1].results[0].n, checkins: c[2].results[0].n,
-      lastSkippedComment: s.lastSkip || null,
+      lastSkippedComment: g.lastSkip || null,
     };
-  } catch {}
+  } catch (e) { settings = { error: String(e.message || e) }; }
 
   return Response.json({
     ok: db && !!env.BOT_TOKEN && !!env.WEBHOOK_SECRET && !!env.ADMIN_CODE && !!webhook?.connected,

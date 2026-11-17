@@ -7,6 +7,9 @@ import {
 } from "./parse.js";
 import { weekSummaryText, postWeek, WEEK_DAYS } from "./weekly.js";
 import { afterCheckin, seedAwards, medalsReport } from "./medals.js";
+import { currentStream, streamsOfGroup, pickStreamForDate, TZ } from "./streams.js";
+import { monthName } from "./store.js";
+import { handleMenuCommand, handleCallback, handleMenuText } from "./menu.js";
 
 const TIMEZONE = (env) => env.TIMEZONE || "Europe/Kiev";
 // Реакція 👍 на зараховану відмітку. Вимкнути: змінна REACT_ON_CHECKIN = 0
@@ -14,6 +17,7 @@ const REACT = (env) => env.REACT_ON_CHECKIN !== "0";
 
 // Меню адміна: бачить лише він (scope = його особистий чат)
 export const ADMIN_COMMANDS = [
+  { command: "start", description: "Меню: потоки, статус, підсумки, медалі" },
   { command: "status", description: "Скільки учасників і відміток" },
   { command: "week", description: "Підсумок тижня (week 2 · week post)" },
   { command: "medals", description: "Медалі в чаті (medals on · off)" },
@@ -22,6 +26,16 @@ export const ADMIN_COMMANDS = [
   { command: "showme", description: "Показати мене на лендінгу" },
   { command: "help", description: "Допомога" },
 ];
+// Які оновлення Telegram надсилає боту (callback_query — натискання кнопок меню)
+export const ALLOWED_UPDATES = ["message", "edited_message", "my_chat_member", "callback_query"];
+/** Якщо вебхук підключали до появи кнопок — додати callback_query (та сама адреса й секрет) */
+export async function ensureCallbacks(api, env) {
+  const info = await api.call("getWebhookInfo");
+  if (!info?.url || (info.allowed_updates || []).includes("callback_query")) return false;
+  await api.call("setWebhook", { url: info.url, secret_token: env.WEBHOOK_SECRET, allowed_updates: ALLOWED_UPDATES });
+  return true;
+}
+
 /** Прибрати меню команд для всіх, крім адмінів (у них своє меню — scope chat) */
 export const hideMenuForOthers = async (api) => {
   await api.call("deleteMyCommands", { scope: { type: "all_private_chats" } });
@@ -39,8 +53,16 @@ async function currentDay(db, s, env) {
   return db.maxDay();
 }
 
+/** Вид бази для «поточного» потоку (сайт і команди без вибору потоку); null — потоків ще немає */
+export async function currentView(base, env) {
+  const st = await currentStream(base, env);
+  return st ? base.forStream(st) : null;
+}
+
 export async function participantsPayload(env) {
-  const db = await store(env.DB);
+  const base = await store(env.DB);
+  const db = await currentView(base, env);
+  if (!db) return { challenge: { startDate: null, currentDay: 0, totalDays: TOTAL_DAYS }, participants: [] };
   const s = await db.all();
   const { people, marks } = await db.participantsWithCheckins();
   const days = new Map(people.map((p) => [p.userId, Array(TOTAL_DAYS).fill(null)]));
@@ -75,17 +97,29 @@ async function skip(db, reason, m) {
 
 // ---------- Оновлення від Telegram ----------
 export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
-  const db = await store(env.DB);
+  let db = await store(env.DB);
 
-  // Бота зробили адміном у групі коментарів
+  // Кнопки меню адміна
+  if (u.callback_query) return handleCallback(u.callback_query, db, api, env);
+
+  // Бота зробили адміном у групі коментарів → привʼязуємо групу до потоку
   if (u.my_chat_member) {
     const { chat, new_chat_member } = u.my_chat_member;
     if ((chat.type === "supergroup" || chat.type === "group") && new_chat_member.status === "administrator") {
-      await db.set({ groupId: String(chat.id), groupTitle: chat.title || "" });
-      const s = await db.all();
-      for (const id of s.admins || []) {
-        await api.send(id, `✅ Мене додано адміном у групу «${chat.title}». Збираю відмітки звідти.`).catch(() => {});
+      const notify = async (t) => { for (const id of (await db.all()).admins || []) await api.send(id, t).catch(() => {}); };
+      const list = await db.streams();
+      const mine = list.filter((x) => String(x.groupId) === String(chat.id) && x.status === "active");
+      if (mine.length) return notify(`✅ Мене знову додано в групу «${chat.title}» — вона вже підключена до потоку «${mine[0].name}».`);
+      const waiting = list.filter((x) => !x.groupId && x.status === "active").sort((a, b) => b.id - a.id)[0];
+      if (waiting) {
+        await db.updateStream(waiting.id, { groupId: String(chat.id), groupTitle: chat.title || "" });
+        return notify(`✅ Групу «${chat.title}» підключено до потоку «${waiting.name}». Збираю відмітки звідти.`);
       }
+      if (!list.length) { // найперший запуск бота: перший потік створюється сам
+        await db.createStream({ name: monthName(null), groupId: String(chat.id), groupTitle: chat.title || "", startDate: null });
+        return notify(`✅ Мене додано адміном у групу «${chat.title}». Збираю відмітки звідти.\nДата старту: /date 10.11.2026`);
+      }
+      return notify(`⚠️ Мене додали адміном у групу «${chat.title}», але немає потоку, який чекає на нову групу.\nЩоб запустити там потік: /start → ➕ Новий потік → «Нова група».`);
     }
     return;
   }
@@ -95,24 +129,30 @@ export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
 
   if (m.chat.type === "private") {
     if (m.text?.startsWith("/")) await handleCommand(m, db, api, env);
+    else if (m.text && u.message) await handleMenuText(m, db, api, env); // відповідь на питання меню (дата, назва)
     return;
   }
 
-  const s = await db.all();
-  if (s.groupId && String(m.chat.id) !== String(s.groupId)) return skip(db, "повідомлення з іншої групи", m);
+  // Потік цієї групи: за датою поста/коментаря (в одній групі потоки йдуть по черзі)
+  const groupStreams = await streamsOfGroup(db, m.chat.id);
+  if (!groupStreams.length) return skip(db, "група не привʼязана до жодного потоку", m);
+  const ymdOf = (d) => todayYmd(d, TIMEZONE(env));
+  const viewFor = (st) => db.forStream(st);
 
   const text = m.text || m.caption || "";
 
   // Пост каналу автоматично зʼявився в групі → запамʼятовуємо, чи це «День N»
   if (m.is_automatic_forward) {
+    const st = pickStreamForDate(groupStreams, ymdOf(m.date ? new Date(m.date * 1000) : new Date()));
+    const s = { startDate: st.startDate };
     // День беремо з тексту («День 5»), а якщо тексту немає (банер без підпису) —
-    // рахуємо за датою публікації від дати старту (/date)
+    // рахуємо за датою публікації від дати старту потоку
     let day = parseDay(text);
     if (!day && s.startDate && m.date) {
       const n = dayNumber(s.startDate, todayYmd(new Date(m.date * 1000), TIMEZONE(env)));
       if (n >= 1 && n <= TOTAL_DAYS) day = n;
     }
-    await db.saveThread(m.chat.id, m.message_id, day ? "day" : "info", day);
+    await viewFor(st).saveThread(m.chat.id, m.message_id, day ? "day" : "info", day);
     return;
   }
 
@@ -122,6 +162,12 @@ export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
   const rootId = m.message_thread_id ?? m.reply_to_message?.message_id;
   const thread = rootId ? await db.thread(m.chat.id, rootId) : null;
   const tgName = displayName(m.from.first_name, m.from.last_name);
+  // потік: за постом, під яким коментар; якщо пост невідомий — за датою коментаря
+  const st = (thread?.streamId && groupStreams.find((x) => x.id === thread.streamId)) ||
+    pickStreamForDate(groupStreams, ymdOf(thread?.created_at ? new Date(thread.created_at) : new Date((m.date || Date.now() / 1000) * 1000)));
+  const gdb = db;
+  db = viewFor(st);
+  const s = await db.all();
 
   // Відмітка дня
   const status = parseStatus(text);
@@ -134,6 +180,7 @@ export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
       if (n >= 1 && n <= TOTAL_DAYS) day = n;
     }
     if (!day) return skip(db, `не вдалося визначити день (пост: ${thread?.kind ?? "невідомий"}, старт: ${s.startDate ?? "не задано"})`, m);
+    if (st.status === "closed") return skip(gdb, `потік «${st.name}» уже закрито`, m);
     await db.touchParticipant(m.from.id, tgName);
     // медалі: перед першою відміткою після запуску — тихо запамʼятати вже наявні (без «залпу»)
     await seedAwards(db, s, env).catch((e) => console.error("medals seed", e));
@@ -163,8 +210,8 @@ async function handleCommand(m, db, api, env) {
   const [cmdRaw, ...args] = m.text.trim().split(/\s+/);
   const cmd = cmdRaw.split("@")[0].toLowerCase();
   const arg = args.join(" ");
-  const s = await db.all();
-  const admins = (s.admins || []).map(String);
+  const g = await db.all();
+  const admins = (g.admins || []).map(String);
   const isAdmin = admins.includes(String(m.from.id));
   const reply = (text, extra) => api.send(m.chat.id, text, extra);
 
@@ -176,6 +223,9 @@ async function handleCommand(m, db, api, env) {
 
   switch (cmd) {
     case "/start":
+    case "/menu":
+      if (env.WEBHOOK_SECRET) await ensureCallbacks(api, env).catch((e) => console.error("webhook", e));
+      return handleMenuCommand(m, db, api, env);
     case "/help":
       return reply(HELP_ADMIN);
     case "/hideme":
@@ -189,8 +239,15 @@ async function handleCommand(m, db, api, env) {
       if (!isAdmin) await db.set({ admins: [...admins, String(m.from.id)] });
       await setAdminMenu(api, m.chat.id).catch(() => {});
       await hideMenuForOthers(api).catch(() => {});
-      return reply("Ти адмін бота ✅\n\nДалі: додай мене адміном у групу коментарів каналу, потім /status");
+      if (env.WEBHOOK_SECRET) await ensureCallbacks(api, env).catch(() => {});
+      return reply("Ти адмін бота ✅\n\nМеню: /start");
   }
+
+  // решта команд — для «поточного» потоку (у меню /start можна обрати будь-який)
+  const base = db;
+  db = await currentView(base, env);
+  if (!db) return reply("Ще немає жодного потоку. Додай мене адміном у групу коментарів каналу.");
+  const s = await db.all();
 
 
   switch (cmd) {
@@ -198,6 +255,7 @@ async function handleCommand(m, db, api, env) {
       const day = await currentDay(db, s, env);
       const c = await db.counts(day);
       return reply([
+        `Потік: «${s.streamName}»`,
         `Група коментарів: ${s.groupId ? (s.groupTitle || s.groupId) + " ✅" : "не підключено ❌ (додай мене адміном)"}`,
         `Поточний день: ${day || "—"}${s.startDate ? ` (старт ${s.startDate})` : " (за останнім постом «День N»)"}`,
         `Постів «День N» побачено: ${c.dayPosts}`,
@@ -243,7 +301,9 @@ async function handleCommand(m, db, api, env) {
   }
 }
 
-const HELP_ADMIN = `Команди адміна:
+const HELP_ADMIN = `Меню з кнопками: /start (потоки, статус, тижневі підсумки, медалі, дата, закриття, новий потік)
+
+Команди (для поточного потоку):
 /status — група, поточний день, скільки учасників і відміток
 /date 10.11.2026 — дата старту: тоді пости дня можна публікувати без тексту «День N» (день рахується за датою)
 /date off — рахувати день за постами
