@@ -24,7 +24,12 @@ const TZ = 'Europe/Kiev';
             <line class="grid" [attr.x1]="L" [attr.x2]="W - R" [attr.y1]="y1(g)" [attr.y2]="y1(g)" />
             <text class="ax" [attr.x]="L - 6" [attr.y]="y1(g) + 3" text-anchor="end">{{ g }}</text>
           }
-          @for (d of xTicks(); track d) { <text class="ax" [attr.x]="x(d)" [attr.y]="H1 - 4" text-anchor="middle">{{ d }}</text> }
+          @for (d of xTicks(); track d) {
+            <text class="ax" [attr.x]="x(d)" [attr.y]="H1 - 4" text-anchor="middle">{{ d }}</text>
+            <line class="tick" [attr.x1]="x(d)" [attr.x2]="x(d)" [attr.y1]="y1(0)" [attr.y2]="y1(0) + 4" />
+          }
+          <line class="axis" [attr.x1]="L" [attr.x2]="L" [attr.y1]="T - 4" [attr.y2]="y1(0)" />
+          <line class="axis" [attr.x1]="L" [attr.x2]="W - R" [attr.y1]="y1(0)" [attr.y2]="y1(0)" />
           <line class="ideal" [attr.x1]="x(1)" [attr.y1]="y1(1)" [attr.x2]="x(cur())" [attr.y2]="y1(cur())" />
           <path class="area" [attr.d]="areaPath()" />
           <path class="line" [attr.d]="linePath()" />
@@ -50,7 +55,12 @@ const TZ = 'Europe/Kiev';
             <line class="grid" [attr.x1]="L" [attr.x2]="W - R" [attr.y1]="y4(g)" [attr.y2]="y4(g)" />
             <text class="ax" [attr.x]="L - 6" [attr.y]="y4(g) + 3" text-anchor="end">{{ g }}</text>
           }
-          @for (d of xTicks(); track d) { <text class="ax" [attr.x]="x(d)" [attr.y]="H4 - 4" text-anchor="middle">{{ d }}</text> }
+          @for (d of xTicks(); track d) {
+            <text class="ax" [attr.x]="x(d)" [attr.y]="H4 - 4" text-anchor="middle">{{ d }}</text>
+            <line class="tick" [attr.x1]="x(d)" [attr.x2]="x(d)" [attr.y1]="y4(0)" [attr.y2]="y4(0) + 4" />
+          }
+          <line class="axis" [attr.x1]="L" [attr.x2]="L" [attr.y1]="T - 4" [attr.y2]="y4(0)" />
+          <line class="axis" [attr.x1]="L" [attr.x2]="W - R" [attr.y1]="y4(0)" [attr.y2]="y4(0)" />
           @if (hx4() !== null) { <line class="cross" [attr.x1]="x(hx4()!)" [attr.x2]="x(hx4()!)" [attr.y1]="T" [attr.y2]="H4 - B" /> }
           <path class="eline" [attr.d]="effPath()" />
           @for (c of daily(); track c.day) {
@@ -67,9 +77,9 @@ const TZ = 'Europe/Kiev';
       <div class="hd"><h3 id="c2">По тижнях</h3><span class="muted">зараховано днів</span></div>
       <div class="plot" (pointerleave)="tip.set(null)">
         <svg [attr.viewBox]="'0 0 ' + W + ' ' + H2" role="img" aria-label="Зараховані дні по тижнях">
-          @for (g of [0, 7]; track g) {
-            <line class="grid" [attr.x1]="L" [attr.x2]="W - R" [attr.y1]="y2(g)" [attr.y2]="y2(g)" />
-          }
+          <line class="grid" [attr.x1]="L" [attr.x2]="W - R" [attr.y1]="y2(7)" [attr.y2]="y2(7)" />
+          <line class="axis" [attr.x1]="L" [attr.x2]="L" [attr.y1]="T - 4" [attr.y2]="y2(0)" />
+          <line class="axis" [attr.x1]="L" [attr.x2]="W - R" [attr.y1]="y2(0)" [attr.y2]="y2(0)" />
           @for (w of weeks(); track w.n; let i = $index) {
             <g class="bar" tabindex="0" (pointerenter)="hoverWeek($event, w)" (focus)="hoverWeek($event, w)" (blur)="tip.set(null)">
               <rect class="hit" [attr.x]="bx(i) - 6" [attr.y]="T" [attr.width]="bw() + 12" [attr.height]="H2 - T - B" />
@@ -96,7 +106,12 @@ const TZ = 'Europe/Kiev';
             <line class="grid" [attr.x1]="L" [attr.x2]="W - R" [attr.y1]="y3(h)" [attr.y2]="y3(h)" />
             <text class="ax" [attr.x]="L - 6" [attr.y]="y3(h) + 3" text-anchor="end">{{ h }}:00</text>
           }
-          @for (d of xTicks(); track d) { <text class="ax" [attr.x]="x(d)" [attr.y]="H3 - 4" text-anchor="middle">{{ d }}</text> }
+          @for (d of xTicks(); track d) {
+            <text class="ax" [attr.x]="x(d)" [attr.y]="H3 - 4" text-anchor="middle">{{ d }}</text>
+            <line class="tick" [attr.x1]="x(d)" [attr.x2]="x(d)" [attr.y1]="y3(24)" [attr.y2]="y3(24) + 4" />
+          }
+          <line class="axis" [attr.x1]="L" [attr.x2]="L" [attr.y1]="y3(0)" [attr.y2]="y3(24)" />
+          <line class="axis" [attr.x1]="L" [attr.x2]="W - R" [attr.y1]="y3(24)" [attr.y2]="y3(24)" />
           @for (t of timesData(); track t.day) {
             <g class="pt" tabindex="0" (pointerenter)="hoverTime($event, t)" (focus)="hoverTime($event, t)" (blur)="tip.set(null)">
               <circle class="hit" [attr.cx]="x(t.day)" [attr.cy]="y3(t.h)" r="12" />
@@ -124,7 +139,9 @@ const TZ = 'Europe/Kiev';
     .plot { position: relative; margin-top: 6px; }
     svg { display: block; width: 100%; height: auto; overflow: visible; touch-action: pan-y; }
     .grid { stroke: #262626; stroke-width: 1; }
-    .ax { fill: #7a7a7a; font-size: 10px; }
+    .ax { fill: #8a8a8a; font-size: 10px; }
+    .axis { stroke: #7a7a7a; stroke-width: 1.5; stroke-linecap: square; }
+    .tick { stroke: #7a7a7a; stroke-width: 1.5; }
     .ideal { stroke: #5a5a5a; stroke-width: 1.5; stroke-dasharray: 4 4; }
     .line { fill: none; stroke: var(--done); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
     .area { fill: var(--done); opacity: .12; }
