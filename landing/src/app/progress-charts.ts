@@ -40,30 +40,29 @@ const TZ = 'Europe/Kiev';
       </div>
     </section>
 
-    <!-- 2. Ефективність: максимум / мінімум / пропуск по днях -->
+    <!-- 2. Ефективність: точки днів + плавна лінія тренду -->
     <section class="ch" aria-labelledby="c4">
       <div class="hd"><h3 id="c4">Ефективність</h3><span class="big">{{ eff() }}%</span></div>
-      <p class="muted">✅ максимум = 100%, 🟨 мінімум = 50%, ❌ пропуск = 0%. Лінія — середня ефективність на кожен день.</p>
+      @if (trend(); as tr) { <p class="trend" [class]="'trend ' + tr.dir">{{ tr.text }}</p> }
       <ul class="legend" aria-label="Легенда">
-        <li><i class="k done"></i>Максимум · {{ cnt().done }}</li>
-        <li><i class="k min"></i>Мінімум · {{ cnt().min }}</li>
-        <li><i class="k miss"></i>Пропуск · {{ cnt().miss }}</li>
+        <li><i class="k done"></i>Максимум 100% · {{ cnt().done }}</li>
+        <li><i class="k min"></i>Мінімум 50% · {{ cnt().min }}</li>
+        <li><i class="k miss"></i>Пропуск 0% · {{ cnt().miss }}</li>
+        <li><i class="k tl"></i>Тренд</li>
       </ul>
-      <div class="plot" (pointerleave)="tip.set(null)">
-        <svg [attr.viewBox]="'0 0 ' + W + ' ' + H4" role="img" [attr.aria-label]="'Ефективність ' + eff() + '%'">
+      <div class="plot" (pointerleave)="tip.set(null); hx4.set(null)">
+        <svg [attr.viewBox]="'0 0 ' + W + ' ' + H4" role="img" [attr.aria-label]="'Ефективність ' + eff() + '%'" (pointermove)="hoverEff($event)">
           @for (g of [0, 50, 100]; track g) {
             <line class="grid" [attr.x1]="L" [attr.x2]="W - R" [attr.y1]="y4(g)" [attr.y2]="y4(g)" />
             <text class="ax" [attr.x]="L - 6" [attr.y]="y4(g) + 3" text-anchor="end">{{ g }}%</text>
           }
           @for (d of xTicks(); track d) { <text class="ax" [attr.x]="x(d)" [attr.y]="H4 - 4" text-anchor="middle">{{ d }}</text> }
+          <path class="tarea" [attr.d]="trendArea()" />
+          <path class="tline" [attr.d]="trendPath()" />
+          @if (hx4() !== null) { <line class="cross" [attr.x1]="x(hx4()!)" [attr.x2]="x(hx4()!)" [attr.y1]="T" [attr.y2]="H4 - B" /> }
           @for (c of daily(); track c.day) {
-            <g class="bar" tabindex="0" (pointerenter)="hoverDay($event, c)" (focus)="hoverDay($event, c)" (blur)="tip.set(null)">
-              <rect class="hit" [attr.x]="x(c.day) - dw() / 2 - 2" [attr.y]="T" [attr.width]="dw() + 4" [attr.height]="H4 - T - B" />
-              @if (c.s) { <path [attr.class]="'d ' + c.s" [attr.d]="barPath(x(c.day) - dw() / 2, y4(c.h), dw(), y4(0) - y4(c.h))" /> }
-            </g>
+            @if (c.s) { <circle [attr.class]="'pd ' + c.s" [attr.cx]="x(c.day)" [attr.cy]="y4(c.v)" [attr.r]="hx4() === c.day ? 6 : 4.5" /> }
           }
-          <path class="avg" [attr.d]="avgPath()" />
-          @if (avg().length) { <circle class="dot avgdot" [attr.cx]="x(avg().length)" [attr.cy]="y4(avg()[avg().length - 1])" r="4" /> }
         </svg>
       </div>
     </section>
@@ -141,11 +140,15 @@ const TZ = 'Europe/Kiev';
     .legend { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: #cfcfcf; }
     .legend li { display: flex; align-items: center; gap: 6px; }
     .k { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
-    .k.done, .d.done { background: var(--done); fill: var(--done); }
-    .k.min, .d.min { background: var(--min); fill: var(--min); }
-    .k.miss, .d.miss { background: #5a5a5a; fill: #5a5a5a; }
-    .avgdot { fill: #fff; }
-    .avg { fill: none; stroke: #fff; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; opacity: .9; }
+    .k.done, .pd.done { background: var(--done); fill: var(--done); }
+    .k.min, .pd.min { background: var(--min); fill: var(--min); }
+    .k.miss, .pd.miss { background: #6a6a6a; fill: #6a6a6a; }
+    .k.tl { height: 3px; border-radius: 2px; background: #fff; }
+    .pd { stroke: var(--card); stroke-width: 2; }
+    .tline { fill: none; stroke: #fff; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+    .tarea { fill: #fff; opacity: .035; }
+    .trend { margin: 2px 0 0; font-size: 13px; font-weight: 700; }
+    .trend.up { color: var(--done); } .trend.down { color: #ff8a6a; } .trend.flat { color: var(--muted); }
     .fill { fill: var(--done); }
     .bar:hover .fill, .bar:focus .fill { filter: brightness(1.15); }
     .bar:focus, .pt:focus { outline: none; }
@@ -191,24 +194,52 @@ export class ProgressCharts {
     return PATH.filter((m) => m.at <= this.total()).map((m) => ({ ...m, day: c.indexOf(m.at) + 1 })).filter((m) => m.day > 0);
   });
 
-  // ---- ефективність: ✅ 100, 🟨 50, ❌ 0 (без відмітки за минулий день — теж 0)
+  // ---- ефективність: ✅ 100, 🟨 50, ❌/без відмітки 0; тренд — середнє за 3 дні (плавна лінія)
   private score = (s: DayStatus | undefined) => (s === 'done' ? 100 : s === 'min' ? 50 : 0);
-  daily = computed(() => this.days().slice(0, this.cur()).map((s, i) => ({
-    day: i + 1, s: s ?? null, h: s === 'done' ? 100 : s === 'min' ? 50 : s === 'miss' ? 6 : 0,
-  })));
-  /** рахуємо лише дні, що вже минули; сьогоднішній — тільки якщо вже є відмітка */
+  /** рахуємо дні, що вже минули; сьогоднішній — лише якщо вже є відмітка */
   private counted = computed(() => { const d = this.days().slice(0, this.cur()); return d[d.length - 1] ? d : d.slice(0, -1); });
-  avg = computed(() => { let sum = 0; return this.counted().map((s, i) => Math.round((sum += this.score(s)) / (i + 1))); });
+  daily = computed(() => this.counted().map((s, i) => ({ day: i + 1, s: s ?? 'miss', v: this.score(s) })));
   eff = computed(() => { const c = this.counted(); return c.length ? Math.round(c.reduce((a, s) => a + this.score(s), 0) / c.length) : 0; });
   cnt = computed(() => { const c = this.counted(); return { done: c.filter((s) => s === 'done').length, min: c.filter((s) => s === 'min').length, miss: c.filter((s) => s === 'miss' || !s).length }; });
+  roll = computed(() => { const v = this.daily().map((d) => d.v); return v.map((_, i) => { const w = v.slice(Math.max(0, i - 2), i + 1); return w.reduce((a, b) => a + b, 0) / w.length; }); });
   y4 = (v: number) => this.T + (1 - v / 100) * (this.H4 - this.T - this.B);
-  dw = computed(() => Math.max(3, Math.min(14, (this.W - this.L - this.R) / this.span() - 3)));
-  avgPath = computed(() => this.avg().map((v, i) => `${i ? 'L' : 'M'}${this.x(i + 1).toFixed(1)},${this.y4(v).toFixed(1)}`).join(''));
-  hoverDay(ev: Event, c: { day: number; s: DayStatus | null }) {
-    this.hx.set(null);
-    const p = this.place(ev, this.x(c.day), this.y4(100));
-    const name = c.s === 'done' ? '✅ максимум · 100%' : c.s === 'min' ? '🟨 мінімум · 50%' : c.s === 'miss' ? '❌ пропуск · 0%' : 'без відмітки';
-    this.tip.set({ ...p, value: name, title: `День ${c.day}`, sub: this.avg()[c.day - 1] !== undefined ? `середня на цей день: ${this.avg()[c.day - 1]}%` : 'день ще триває' });
+  hx4 = signal<number | null>(null);
+  /** плавна крива через точки тренду (Catmull-Rom → Безьє) */
+  trendPath = computed(() => {
+    const p = this.roll().map((v, i) => [this.x(i + 1), this.y4(v)] as const);
+    if (p.length < 2) return p.length ? `M${p[0][0]},${p[0][1]}` : '';
+    let d = `M${p[0][0].toFixed(1)},${p[0][1].toFixed(1)}`;
+    for (let i = 0; i < p.length - 1; i++) {
+      const p0 = p[i - 1] ?? p[i], p1 = p[i], p2 = p[i + 1], p3 = p[i + 2] ?? p2;
+      const c1 = [p1[0] + (p2[0] - p0[0]) / 6, Math.min(this.y4(0), Math.max(this.y4(100), p1[1] + (p2[1] - p0[1]) / 6))];
+      const c2 = [p2[0] - (p3[0] - p1[0]) / 6, Math.min(this.y4(0), Math.max(this.y4(100), p2[1] - (p3[1] - p1[1]) / 6))];
+      d += `C${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+    }
+    return d;
+  });
+  trendArea = computed(() => { const n = this.roll().length; return n > 1 ? `${this.trendPath()}L${this.x(n).toFixed(1)},${this.y4(0)}L${this.x(1).toFixed(1)},${this.y4(0)}Z` : ''; });
+  /** куди йде: середнє останніх 7 днів проти попередніх 7 (або половин, якщо днів мало) */
+  trend = computed(() => {
+    const v = this.daily().map((d) => d.v);
+    if (v.length < 4) return null;
+    const k = Math.min(7, Math.floor(v.length / 2));
+    const avg = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
+    const diff = Math.round(avg(v.slice(-k)) - avg(v.slice(-2 * k, -k)));
+    const per = k === 7 ? 'за тиждень' : `за останні ${k} дн.`;
+    if (Math.abs(diff) < 5) return { dir: 'flat', text: `→ стабільно ${per}` };
+    return diff > 0 ? { dir: 'up', text: `↗ росте: +${diff}% ${per}` } : { dir: 'down', text: `↘ просідає: ${diff}% ${per}` };
+  });
+  hoverEff(ev: PointerEvent) {
+    const svg = ev.currentTarget as SVGSVGElement;
+    const r = svg.getBoundingClientRect();
+    const sx = ((ev.clientX - r.left) / r.width) * this.W;
+    const d = Math.round(((sx - this.L) / (this.W - this.L - this.R)) * (this.span() - 1)) + 1;
+    const c = this.daily()[d - 1];
+    if (!c) { this.hx4.set(null); this.tip.set(null); return; }
+    this.hx4.set(d);
+    const p = this.place(ev, this.x(d), Math.min(this.y4(c.v), this.y4(this.roll()[d - 1])));
+    const name = c.s === 'done' ? '✅ максимум · 100%' : c.s === 'min' ? '🟨 мінімум · 50%' : '❌ пропуск · 0%';
+    this.tip.set({ ...p, value: name, title: `День ${d}`, sub: `тренд: ${Math.round(this.roll()[d - 1])}%` });
   }
 
   // ---- тижні
