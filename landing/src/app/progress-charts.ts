@@ -40,7 +40,35 @@ const TZ = 'Europe/Kiev';
       </div>
     </section>
 
-    <!-- 2. По тижнях -->
+    <!-- 2. Ефективність: максимум / мінімум / пропуск по днях -->
+    <section class="ch" aria-labelledby="c4">
+      <div class="hd"><h3 id="c4">Ефективність</h3><span class="big">{{ eff() }}%</span></div>
+      <p class="muted">✅ максимум = 100%, 🟨 мінімум = 50%, ❌ пропуск = 0%. Лінія — середня ефективність на кожен день.</p>
+      <ul class="legend" aria-label="Легенда">
+        <li><i class="k done"></i>Максимум · {{ cnt().done }}</li>
+        <li><i class="k min"></i>Мінімум · {{ cnt().min }}</li>
+        <li><i class="k miss"></i>Пропуск · {{ cnt().miss }}</li>
+      </ul>
+      <div class="plot" (pointerleave)="tip.set(null)">
+        <svg [attr.viewBox]="'0 0 ' + W + ' ' + H4" role="img" [attr.aria-label]="'Ефективність ' + eff() + '%'">
+          @for (g of [0, 50, 100]; track g) {
+            <line class="grid" [attr.x1]="L" [attr.x2]="W - R" [attr.y1]="y4(g)" [attr.y2]="y4(g)" />
+            <text class="ax" [attr.x]="L - 6" [attr.y]="y4(g) + 3" text-anchor="end">{{ g }}%</text>
+          }
+          @for (d of xTicks(); track d) { <text class="ax" [attr.x]="x(d)" [attr.y]="H4 - 4" text-anchor="middle">{{ d }}</text> }
+          @for (c of daily(); track c.day) {
+            <g class="bar" tabindex="0" (pointerenter)="hoverDay($event, c)" (focus)="hoverDay($event, c)" (blur)="tip.set(null)">
+              <rect class="hit" [attr.x]="x(c.day) - dw() / 2 - 2" [attr.y]="T" [attr.width]="dw() + 4" [attr.height]="H4 - T - B" />
+              @if (c.s) { <path [attr.class]="'d ' + c.s" [attr.d]="barPath(x(c.day) - dw() / 2, y4(c.h), dw(), y4(0) - y4(c.h))" /> }
+            </g>
+          }
+          <path class="avg" [attr.d]="avgPath()" />
+          @if (avg().length) { <circle class="dot avgdot" [attr.cx]="x(avg().length)" [attr.cy]="y4(avg()[avg().length - 1])" r="4" /> }
+        </svg>
+      </div>
+    </section>
+
+    <!-- 3. По тижнях -->
     <section class="ch" aria-labelledby="c2">
       <div class="hd"><h3 id="c2">По тижнях</h3><span class="muted">зараховано днів</span></div>
       <div class="plot" (pointerleave)="tip.set(null)">
@@ -110,6 +138,14 @@ const TZ = 'Europe/Kiev';
     .cross { stroke: #8a8a8a; stroke-width: 1; }
     .medal { font-size: 11px; }
     .slot { fill: #1f1f1f; }
+    .legend { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: #cfcfcf; }
+    .legend li { display: flex; align-items: center; gap: 6px; }
+    .k { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+    .k.done, .d.done { background: var(--done); fill: var(--done); }
+    .k.min, .d.min { background: var(--min); fill: var(--min); }
+    .k.miss, .d.miss { background: #5a5a5a; fill: #5a5a5a; }
+    .avgdot { fill: #fff; }
+    .avg { fill: none; stroke: #fff; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; opacity: .9; }
     .fill { fill: var(--done); }
     .bar:hover .fill, .bar:focus .fill { filter: brightness(1.15); }
     .bar:focus, .pt:focus { outline: none; }
@@ -134,7 +170,7 @@ export class ProgressCharts {
 
   // геометрія (viewBox масштабується під ширину екрана)
   readonly W = 340; readonly L = 30; readonly R = 8; readonly T = 14; readonly B = 18;
-  readonly H1 = 170; readonly H2 = 140; readonly H3 = 170;
+  readonly H1 = 170; readonly H2 = 140; readonly H3 = 170; readonly H4 = 160;
   tip = signal<Tip>(null);
   hx = signal<number | null>(null);
 
@@ -154,6 +190,26 @@ export class ProgressCharts {
     const c = this.cum();
     return PATH.filter((m) => m.at <= this.total()).map((m) => ({ ...m, day: c.indexOf(m.at) + 1 })).filter((m) => m.day > 0);
   });
+
+  // ---- ефективність: ✅ 100, 🟨 50, ❌ 0 (без відмітки за минулий день — теж 0)
+  private score = (s: DayStatus | undefined) => (s === 'done' ? 100 : s === 'min' ? 50 : 0);
+  daily = computed(() => this.days().slice(0, this.cur()).map((s, i) => ({
+    day: i + 1, s: s ?? null, h: s === 'done' ? 100 : s === 'min' ? 50 : s === 'miss' ? 6 : 0,
+  })));
+  /** рахуємо лише дні, що вже минули; сьогоднішній — тільки якщо вже є відмітка */
+  private counted = computed(() => { const d = this.days().slice(0, this.cur()); return d[d.length - 1] ? d : d.slice(0, -1); });
+  avg = computed(() => { let sum = 0; return this.counted().map((s, i) => Math.round((sum += this.score(s)) / (i + 1))); });
+  eff = computed(() => { const c = this.counted(); return c.length ? Math.round(c.reduce((a, s) => a + this.score(s), 0) / c.length) : 0; });
+  cnt = computed(() => { const c = this.counted(); return { done: c.filter((s) => s === 'done').length, min: c.filter((s) => s === 'min').length, miss: c.filter((s) => s === 'miss' || !s).length }; });
+  y4 = (v: number) => this.T + (1 - v / 100) * (this.H4 - this.T - this.B);
+  dw = computed(() => Math.max(3, Math.min(14, (this.W - this.L - this.R) / this.span() - 3)));
+  avgPath = computed(() => this.avg().map((v, i) => `${i ? 'L' : 'M'}${this.x(i + 1).toFixed(1)},${this.y4(v).toFixed(1)}`).join(''));
+  hoverDay(ev: Event, c: { day: number; s: DayStatus | null }) {
+    this.hx.set(null);
+    const p = this.place(ev, this.x(c.day), this.y4(100));
+    const name = c.s === 'done' ? '✅ максимум · 100%' : c.s === 'min' ? '🟨 мінімум · 50%' : c.s === 'miss' ? '❌ пропуск · 0%' : 'без відмітки';
+    this.tip.set({ ...p, value: name, title: `День ${c.day}`, sub: this.avg()[c.day - 1] !== undefined ? `середня на цей день: ${this.avg()[c.day - 1]}%` : 'день ще триває' });
+  }
 
   // ---- тижні
   weeks = computed(() => {
