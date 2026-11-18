@@ -40,29 +40,26 @@ const TZ = 'Europe/Kiev';
       </div>
     </section>
 
-    <!-- 2. Ефективність: кожен день — кружечок на своїй «сходинці». Вище = краще. -->
+    <!-- 2. Ефективність: класичний графік — дні внизу, % збоку, одна лінія з точками -->
     <section class="ch" aria-labelledby="c4">
-      <div class="hd"><h3 id="c4">Як проходять дні</h3></div>
-      <p class="sum">
-        <span class="s done">✅ {{ cnt().done }} на максимум</span>
-        <span class="s min">🟨 {{ cnt().min }} на мінімум</span>
-        <span class="s miss">❌ {{ cnt().miss }} {{ cnt().miss === 1 ? 'пропуск' : 'пропусків' }}</span>
-      </p>
-      @if (trend(); as tr) { <p class="trend">{{ tr }}</p> }
+      <div class="hd"><h3 id="c4">Ефективність, %</h3><span class="big">{{ last() }}%</span></div>
+      <p class="muted">Що вище лінія — то краще йдуть справи. ✅ = 100%, 🟨 = 50%, ❌ = 0% (середнє за 3 останні дні).</p>
       <div class="plot" (pointerleave)="tip.set(null); hx4.set(null)">
-        <svg [attr.viewBox]="'0 0 ' + W + ' ' + H4" role="img" aria-label="Кожен день: максимум, мінімум чи пропуск" (pointermove)="hoverEff($event)">
-          @for (l of lanes; track l.v) {
-            <line class="grid" [attr.x1]="LW" [attr.x2]="W - R" [attr.y1]="y4(l.v)" [attr.y2]="y4(l.v)" />
-            <text class="lane" [attr.x]="LW - 8" [attr.y]="y4(l.v) + 4" text-anchor="end">{{ l.label }}</text>
+        <svg [attr.viewBox]="'0 0 ' + W + ' ' + H4" role="img" [attr.aria-label]="'Ефективність ' + last() + '%'" (pointermove)="hoverEff($event)">
+          @for (g of [0, 25, 50, 75, 100]; track g) {
+            <line class="grid" [attr.x1]="L" [attr.x2]="W - R" [attr.y1]="y4(g)" [attr.y2]="y4(g)" />
+            <text class="ax" [attr.x]="L - 6" [attr.y]="y4(g) + 3" text-anchor="end">{{ g }}</text>
           }
-          @for (d of xTicks(); track d) { <text class="ax" [attr.x]="x4(d)" [attr.y]="H4 - 4" text-anchor="middle">{{ d }}</text> }
-          <path class="zig" [attr.d]="zigPath()" />
+          @for (d of xTicks(); track d) { <text class="ax" [attr.x]="x(d)" [attr.y]="H4 - 4" text-anchor="middle">{{ d }}</text> }
+          @if (hx4() !== null) { <line class="cross" [attr.x1]="x(hx4()!)" [attr.x2]="x(hx4()!)" [attr.y1]="T" [attr.y2]="H4 - B" /> }
+          <path class="eline" [attr.d]="effPath()" />
           @for (c of daily(); track c.day) {
-            <circle [attr.class]="'pd ' + c.s" [attr.cx]="x4(c.day)" [attr.cy]="y4(c.v)" [attr.r]="hx4() === c.day ? 7 : 5.5" />
+            <rect class="mk" [attr.x]="x(c.day) - 4" [attr.y]="y4(c.p) - 4" width="8" height="8" rx="1.5"
+              [attr.transform]="'rotate(45 ' + x(c.day) + ' ' + y4(c.p) + ')'" [class.on]="hx4() === c.day" />
           }
         </svg>
       </div>
-      <p class="muted center">← дні челенджу →   ·   вище = краще</p>
+      <p class="muted center">дні челенджу</p>
     </section>
 
     <!-- 3. По тижнях -->
@@ -148,8 +145,9 @@ const TZ = 'Europe/Kiev';
     .sum { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
     .s { border-radius: 999px; padding: 4px 10px; font-size: 13px; font-weight: 700; background: #1f1f1f; }
     .trend { margin: 10px 0 0; font-size: 14px; font-weight: 700; }
-    .lane { fill: #cfcfcf; font-size: 11px; font-weight: 600; }
-    .zig { fill: none; stroke: #5a5a5a; stroke-width: 2; stroke-linejoin: round; }
+    .eline { fill: none; stroke: var(--done); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+    .mk { fill: var(--done); stroke: var(--card); stroke-width: 1.5; }
+    .mk.on { fill: #fff; }
     .center { text-align: center; margin: 2px 0 6px; }
     .fill { fill: var(--done); }
     .bar:hover .fill, .bar:focus .fill { filter: brightness(1.15); }
@@ -175,7 +173,7 @@ export class ProgressCharts {
 
   // геометрія (viewBox масштабується під ширину екрана)
   readonly W = 340; readonly L = 30; readonly R = 8; readonly T = 14; readonly B = 18;
-  readonly H1 = 170; readonly H2 = 140; readonly H3 = 170; readonly H4 = 150;
+  readonly H1 = 170; readonly H2 = 140; readonly H3 = 170; readonly H4 = 180;
   tip = signal<Tip>(null);
   hx = signal<number | null>(null);
 
@@ -196,39 +194,31 @@ export class ProgressCharts {
     return PATH.filter((m) => m.at <= this.total()).map((m) => ({ ...m, day: c.indexOf(m.at) + 1 })).filter((m) => m.day > 0);
   });
 
-  // ---- «Як проходять дні»: три сходинки — максимум / мінімум / пропуск
-  private score = (s: DayStatus | undefined) => (s === 'done' ? 2 : s === 'min' ? 1 : 0);
+  // ---- ефективність, %: ✅ 100, 🟨 50, ❌/без відмітки 0; точка дня = середнє за останні 3 дні
+  private score = (s: DayStatus | undefined): number => (s === "done" ? 100 : s === "min" ? 50 : 0);
   /** дні, що вже минули; сьогоднішній — лише якщо вже є відмітка */
   private counted = computed(() => { const d = this.days().slice(0, this.cur()); return d[d.length - 1] ? d : d.slice(0, -1); });
-  daily = computed(() => this.counted().map((s, i) => ({ day: i + 1, s: s ?? 'miss', v: this.score(s) })));
-  cnt = computed(() => { const c = this.counted(); return { done: c.filter((s) => s === 'done').length, min: c.filter((s) => s === 'min').length, miss: c.filter((s) => s === 'miss' || !s).length }; });
-  readonly lanes = [{ v: 2, label: 'Максимум' }, { v: 1, label: 'Мінімум' }, { v: 0, label: 'Пропуск' }];
-  readonly LW = 70; // місце під підписи сходинок
-  x4 = (d: number) => this.LW + 8 + ((d - 1) / Math.max(this.span() - 1, 1)) * (this.W - this.LW - 8 - this.R);
-  y4 = (v: number) => this.T + 6 + (1 - v / 2) * (this.H4 - this.T - this.B - 12);
-  hx4 = signal<number | null>(null);
-  zigPath = computed(() => this.daily().map((c, i) => `${i ? 'L' : 'M'}${this.x4(c.day).toFixed(1)},${this.y4(c.v).toFixed(1)}`).join(''));
-  /** одне просте речення: останні дні краще чи гірше за попередні */
-  trend = computed(() => {
-    const v = this.daily().map((d) => d.v);
-    if (v.length < 4) return null;
-    const k = Math.min(7, Math.floor(v.length / 2));
-    const avg = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
-    const diff = avg(v.slice(-k)) - avg(v.slice(-2 * k, -k));
-    if (diff > 0.15) return '📈 Останні дні — краще, ніж до цього';
-    if (diff < -0.15) return '📉 Останні дні — трохи гірше, ніж до цього';
-    return '➡️ Тримаєш рівний темп';
+  daily = computed(() => {
+    const v = this.counted().map((s) => this.score(s));
+    return this.counted().map((s, i) => {
+      const w = v.slice(Math.max(0, i - 2), i + 1);
+      return { day: i + 1, s: s ?? 'miss', p: Math.round(w.reduce((a, b) => a + b, 0) / w.length) };
+    });
   });
+  last = computed(() => this.daily().at(-1)?.p ?? 0);
+  y4 = (v: number) => this.T + (1 - v / 100) * (this.H4 - this.T - this.B);
+  hx4 = signal<number | null>(null);
+  effPath = computed(() => this.daily().map((c, i) => `${i ? 'L' : 'M'}${this.x(c.day).toFixed(1)},${this.y4(c.p).toFixed(1)}`).join(''));
   hoverEff(ev: PointerEvent) {
     const svg = ev.currentTarget as SVGSVGElement;
     const r = svg.getBoundingClientRect();
     const sx = ((ev.clientX - r.left) / r.width) * this.W;
-    const d = Math.round(((sx - this.LW - 8) / (this.W - this.LW - 8 - this.R)) * (this.span() - 1)) + 1;
+    const d = Math.round(((sx - this.L) / (this.W - this.L - this.R)) * (this.span() - 1)) + 1;
     const c = this.daily()[d - 1];
     if (!c) { this.hx4.set(null); this.tip.set(null); return; }
     this.hx4.set(d);
-    const p = this.place(ev, this.x4(d), this.y4(c.v));
-    this.tip.set({ ...p, value: `День ${d}`, title: c.s === 'done' ? '✅ максимум' : c.s === 'min' ? '🟨 мінімум' : '❌ пропуск' });
+    const p = this.place(ev, this.x(d), this.y4(c.p));
+    this.tip.set({ ...p, value: `${c.p}%`, title: `День ${d}`, sub: c.s === 'done' ? '✅ максимум' : c.s === 'min' ? '🟨 мінімум' : '❌ пропуск' });
   }
 
   // ---- тижні
