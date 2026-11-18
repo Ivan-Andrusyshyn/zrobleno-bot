@@ -1,15 +1,16 @@
-import { Component, computed, inject, input } from '@angular/core';
+import { Component, computed, inject, input, signal } from '@angular/core';
 import { Location } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { DataService } from './data.service';
 import { DayGrid } from './day-grid';
 import { RewardsBlock } from './rewards';
+import { ProgressCharts } from './progress-charts';
 import { firstOfDayCounts, rewardsOf } from './rewards-logic';
 import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './models';
 
 @Component({
   selector: 'app-participant',
-  imports: [RouterLink, DayGrid, RewardsBlock],
+  imports: [RouterLink, DayGrid, RewardsBlock, ProgressCharts],
   template: `
     <a class="back" routerLink="/" (click)="back($event)">← Усі учасники</a>
     @if (p(); as p) {
@@ -28,6 +29,14 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
         <div class="stat"><b>{{ count('done') }}/{{ count('min') }}/{{ count('miss') }}</b><span>✅ / 🟨 / ❌</span></div>
       </section>
 
+      <div class="tabs" role="tablist" aria-label="Вигляд">
+        <button type="button" role="tab" [attr.aria-selected]="tab() === 'days'" [class.on]="tab() === 'days'" (click)="tab.set('days')">📅 Дні</button>
+        <button type="button" role="tab" [attr.aria-selected]="tab() === 'charts'" [class.on]="tab() === 'charts'" (click)="tab.set('charts')">📈 Графіки</button>
+      </div>
+
+      @if (tab() === 'charts') {
+        <app-progress-charts [days]="p.days" [stamps]="p.times" [currentDay]="day()" />
+      } @else {
       @if (rw(); as r) { <app-rewards [r]="r" /> }
 
       <app-day-grid [days]="p.days" [currentDay]="day()" [big]="true" />
@@ -47,6 +56,7 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
           <p class="note">Поки що немає відміток.</p>
         }
       </section>
+      }
 
       <dl class="info">
         <dt>Мінімум</dt><dd>{{ p.minimum }}</dd>
@@ -83,6 +93,10 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
     .c-at { margin-left: auto; color: var(--muted); font-size: 12px; }
     .c-text { margin: 6px 0 0; font-size: 15px; line-height: 1.45; white-space: pre-line; word-break: break-word; }
     :host { display: block; max-width: 560px; margin: 0 auto; }
+    .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--card); border-radius: 14px; padding: 4px; margin: 18px 0 0; }
+    .tabs button { border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 700; font-size: 14px; padding: 9px 0; border-radius: 10px; cursor: pointer; }
+    .tabs button.on { background: #2a2a2a; color: #fff; }
+    .tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     .badge { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; border-radius: 999px; padding: 4px 12px; font-size: 13px; font-weight: 700; color: #fff; }
     .badge.bronze { background: #3a2412; box-shadow: inset 0 0 0 1.5px #cd7f32; }
     .badge.silver { background: #24282e; box-shadow: inset 0 0 0 1.5px #c0c7d0; }
@@ -107,6 +121,7 @@ export class ParticipantPage {
   day = computed(() => this.data.challenge().currentDay);
   p = computed(() => this.data.byId(Number(this.id())));
   streak = computed(() => (this.p() ? currentStreak(this.p()!, this.day()) : 0));
+  tab = signal<'days' | 'charts'>('days');
   pct = computed(() => (this.p() ? completion(this.p()!, this.day()) : 0));
   rw = computed(() => {
     const p = this.p();
