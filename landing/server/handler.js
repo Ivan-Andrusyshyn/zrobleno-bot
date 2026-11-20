@@ -7,7 +7,7 @@ import {
 } from "./parse.js";
 import { weekSummaryText, postWeek, WEEK_DAYS } from "./weekly.js";
 import { afterCheckin, seedAwards, medalsReport } from "./medals.js";
-import { currentStream, streamsOfGroup, pickStreamForDate, TZ } from "./streams.js";
+import { currentStream, streamsOfGroup, pickStreamForDate, TZ, personalStartDay } from "./streams.js";
 import { monthName } from "./store.js";
 import { handleMenuCommand, handleCallback, handleMenuText } from "./menu.js";
 
@@ -84,6 +84,8 @@ export async function participantsPayload(env) {
       minimum: p.minimum || "—",
       why: p.why || undefined,
       days: days.get(p.userId),
+      // особистий перший день у потоці (хто прийшов пізніше — рахуємо % від свого дня)
+      startDay: personalStartDay(p.joinedAt, s.startDate, days.get(p.userId).flatMap((v, d) => (v ? [d + 1] : [])), TIMEZONE(env)),
       times: times.get(p.userId),
       comments: comments.get(p.userId).sort((a, b) => b.day - a.day),
     })),
@@ -282,7 +284,7 @@ async function handleCommand(m, db, api, env) {
         if (r.posted) await db.claimWeek(week);
         return reply(r.posted ? `Опубліковано підсумок ${week}-го тижня ✅${r.underDayPost ? "" : " (поста дня не знайшов — написав просто в групу)"}` : `Не опубліковано: ${r.reason}`);
       }
-      const text = weekSummaryText(await db.participantsWithCheckins(), week, env.SITE_URL || "https://zrobleno.pages.dev");
+      const text = weekSummaryText(await db.participantsWithCheckins(), week, env.SITE_URL || "https://zrobleno.pages.dev", [], { startDate: s.startDate, tz: TIMEZONE(env) });
       return reply(text ? `Попередній перегляд (у групу не відправлено):\n\n${text}` : "Поки немає учасників з відмітками.", { link_preview_options: { is_disabled: true } });
     }
     case "/medals": {

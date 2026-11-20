@@ -241,3 +241,42 @@ test("/start вмикає кнопки у вебхуку, якщо його пі
     assert.ok(hook.allowed_updates.includes("callback_query"));
   } finally { globalThis.Date = RealDate; }
 });
+
+test("пізній учасник: особистий перший день, тижневий підсумок рахує лише його дні", async () => {
+  useClock();
+  try {
+    const { env, api, addBot, pm, post, comment } = await setup();
+    await addBot(-100, "Основна");
+    await pm("/date 10.11.2026");
+    for (let d = 1; d <= 7; d++) {
+      at(new RealDate(RealDate.UTC(2026, 10, 9 + d, 8)).toISOString());
+      await post(-100, 100 * d, `День ${d}`);
+      await comment(-100, 100 * d + 1, 100 * d, "✅", { id: 7, first_name: "Оля" });
+      if (d === 5) { // Ніна приходить на 5-й день: анкета, потім відмітки 5–7
+        await comment(-100, 9001, 1, "1. Ніна\n2. Вода\n3. 1 склянка\n4. Для здоровʼя", { id: 9, first_name: "Ніна" });
+      }
+      if (d >= 5) await comment(-100, 100 * d + 2, 100 * d, "✅", { id: 9, first_name: "Ніна" });
+    }
+    const pay = await participantsPayload(env);
+    const by = Object.fromEntries(pay.participants.map((p) => [p.name, p]));
+    assert.equal(by["Оля"].startDay, 1);
+    assert.equal(by["Ніна"].startDay, 5);
+
+    const { weekSummaryText } = await import("../weekly.js");
+    const base = await store(env.DB);
+    const v = base.forStream((await base.streams())[0]);
+    const t = weekSummaryText(await v.participantsWithCheckins(), 1, "s", [], { startDate: "2026-11-10", tz: "Europe/Kiev" });
+    assert.match(t, /▫️▫️▫️▫️🟩🟩🟩 3\/3 🔥3 — Ніна/);
+    assert.match(t, /🟩🟩🟩🟩🟩🟩🟩 7\/7 🔥7 — Оля/);
+    assert.match(t, /Група: 100% днів зараховано/); // (7 + 3) / (7 + 3)
+    assert.match(t, /Ідеальний тиждень \(7\/7\): 1 з 2/);
+  } finally { globalThis.Date = RealDate; }
+});
+
+test("пізній учасник не отримує Фенікса за свій перший день", async () => {
+  const { rewardsOf } = await import("../../shared/rewards.js");
+  const days = [null, null, null, null, "done", "done", "done", ...Array(23).fill(null)];
+  const ch = { startDate: "2026-11-10", currentDay: 7, totalDays: 30 };
+  assert.equal(rewardsOf({ id: 1, days, startDay: 5 }, ch, new Map()).bonus.phoenix, 0);
+  assert.equal(rewardsOf({ id: 1, days: ["done", "miss", "done", ...Array(27).fill(null)] }, { ...ch, currentDay: 3 }, new Map()).bonus.phoenix, 1);
+});

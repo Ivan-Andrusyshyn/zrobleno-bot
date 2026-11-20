@@ -4,7 +4,7 @@ import { DataService } from './data.service';
 import { DayGrid } from './day-grid';
 import { Rules } from './rules';
 import { BONUS, firstOfDayCounts, rewardsOf } from './rewards-logic';
-import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './models';
+import { STATUS_ICON, cleanText, completion, currentStreak, daysWord, lateLabel } from './models';
 
 @Component({
   selector: 'app-home',
@@ -42,13 +42,14 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
               <div class="who">
                 <h2>{{ p.name }}</h2>
                 <p>{{ p.habit }}</p>
+                @if (p.late) { <p class="late">🕓 у потоці {{ p.late }}</p> }
                 @if (p.medal; as m) { <span class="medal" [class]="'medal ' + m.tier">{{ m.icon }} {{ m.name }}</span> }
               </div>
               <div class="streak" [attr.aria-label]="p.streak + ' ' + daysWord(p.streak) + ' поспіль'">
                 <b>@if (p.streak > 0) {🔥 }{{ p.streak }}</b><span>{{ daysWord(p.streak) }}<br />поспіль</span>
               </div>
             </div>
-            <app-day-grid [days]="p.days" [currentDay]="day()" />
+            <app-day-grid [days]="p.days" [currentDay]="day()" [startDay]="p.startDay ?? 1" />
             <div class="bar"><i [style.width.%]="p.pct"></i></div>
             <p class="meta">{{ p.pct }}% днів виконано · мінімум: {{ p.minimum }}</p>
             @if (p.comments?.[0]; as c) {
@@ -134,6 +135,7 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
     .lg.min { background: var(--min, #ffc83d); }
     .lg.miss { background: var(--miss); }
     .note { color: var(--muted); font-size: 13px; text-align: center; margin: 16px 0 0; }
+    .who p.late { color: var(--muted); font-size: 12px; margin-top: 2px; }
     .medal { display: inline-block; margin-top: 4px; border-radius: 999px; padding: 1px 8px; font-size: 11px; font-weight: 700; color: #fff; white-space: nowrap; }
     .medal.bronze { background: #3a2412; box-shadow: inset 0 0 0 1px #cd7f32; }
     .medal.silver { background: #24282e; box-shadow: inset 0 0 0 1px #c0c7d0; }
@@ -182,7 +184,7 @@ export class Home {
         const r = rewardsOf(p, ch, firsts);
         // усі отримані: медалі «Шляху» + бонусні (тип, а не ×N) — показуємо 3 останні
         const got = [...r.path.filter((m) => m.got), ...BONUS.filter((b) => r.bonus[b.key] > 0)];
-        return { ...p, streak: currentStreak(p, d), pct: completion(p, d), medal: r.latest, icons: got.slice(-3).reverse(), awards: got.length };
+        return { ...p, streak: currentStreak(p, d), pct: completion(p, d), late: lateLabel(p), medal: r.latest, icons: got.slice(-3).reverse(), awards: got.length };
       })
       .sort((a, b) => b.streak - a.streak || b.pct - a.pct);
   });

@@ -129,7 +129,7 @@ async function screenWeek(db, id, env) {
 async function screenWeekPreview(db, id, week, env) {
   const st = await db.stream(id);
   const v = db.forStream(st);
-  const text = weekSummaryText(await v.participantsWithCheckins(), week, SITE(env));
+  const text = weekSummaryText(await v.participantsWithCheckins(), week, SITE(env), [], { startDate: (await v.all()).startDate, tz: TZ(env) });
   return {
     text: text ? `Попередній перегляд (у групу не відправлено):\n\n${text}` : "Поки немає учасників з відмітками.",
     kb: rows([btn("📤 Опублікувати", `wp:${id}:${week}`), btn("← Назад", `w:${id}`)]),

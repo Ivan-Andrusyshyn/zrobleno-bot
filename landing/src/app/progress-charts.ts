@@ -16,7 +16,7 @@ const TZ = 'Europe/Kiev';
   template: `
     <!-- 1. Зараховано днів наростаючим підсумком -->
     <section class="ch" aria-labelledby="c1">
-      <div class="hd"><h3 id="c1">Зараховано днів</h3><span class="big">{{ total() }}<small> з {{ cur() }}</small></span></div>
+      <div class="hd"><h3 id="c1">Зараховано днів</h3><span class="big">{{ total() }}<small> з {{ ownDays() }}</small></span></div>
       <p class="muted">Лінія росте з кожним ✅ чи 🟨. Пунктир — якби без жодного пропуску.</p>
       <div class="plot" (pointerleave)="tip.set(null)">
         <svg [attr.viewBox]="'0 0 ' + W + ' ' + H1" role="img" [attr.aria-label]="'Зараховано ' + total() + ' днів з ' + cur()" (pointermove)="hoverLine($event)">
@@ -30,7 +30,7 @@ const TZ = 'Europe/Kiev';
           }
           <line class="axis" [attr.x1]="L" [attr.x2]="L" [attr.y1]="T - 4" [attr.y2]="y1(0)" />
           <line class="axis" [attr.x1]="L" [attr.x2]="W - R" [attr.y1]="y1(0)" [attr.y2]="y1(0)" />
-          <line class="ideal" [attr.x1]="x(1)" [attr.y1]="y1(1)" [attr.x2]="x(cur())" [attr.y2]="y1(cur())" />
+          <line class="ideal" [attr.x1]="x(sd())" [attr.y1]="y1(1)" [attr.x2]="x(cur())" [attr.y2]="y1(ownDays())" />
           <path class="area" [attr.d]="areaPath()" />
           <path class="line" [attr.d]="linePath()" />
           @for (m of milestones(); track m.at) {
@@ -38,7 +38,7 @@ const TZ = 'Europe/Kiev';
           }
           @if (hx() !== null) {
             <line class="cross" [attr.x1]="x(hx()!)" [attr.x2]="x(hx()!)" [attr.y1]="T" [attr.y2]="H1 - B" />
-            <circle class="dot" [attr.cx]="x(hx()!)" [attr.cy]="y1(cum()[hx()! - 1])" r="4.5" />
+            <circle class="dot" [attr.cx]="x(hx()!)" [attr.cy]="y1(cum()[hx()! - 1] ?? 0)" r="4.5" />
           }
           <circle class="dot" [attr.cx]="x(cur())" [attr.cy]="y1(total())" r="4.5" />
         </svg>
@@ -186,6 +186,8 @@ export class ProgressCharts {
   days = input.required<DayStatus[]>();
   stamps = input<(string | null)[] | undefined>(undefined);
   currentDay = input.required<number>();
+  /** особистий перший день: дні до нього не рахуються (ні як пропуски, ні в лініях) */
+  startDay = input(1);
   total30 = 30;
 
   // геометрія (viewBox масштабується під ширину екрана)
@@ -195,16 +197,19 @@ export class ProgressCharts {
   hx = signal<number | null>(null);
 
   cur = computed(() => Math.max(1, Math.min(this.currentDay(), this.total30)));
-  cum = computed(() => { let n = 0; return this.days().slice(0, this.cur()).map((s) => (n += ok(s) ? 1 : 0)); });
+  sd = computed(() => Math.min(Math.max(1, this.startDay()), this.cur()));
+  /** зараховано наростаючим підсумком; до першого дня — null (лінії там немає) */
+  cum = computed(() => { let n = 0; return this.days().slice(0, this.cur()).map((s, i) => (i + 1 < this.sd() ? null : (n += ok(s) ? 1 : 0))); });
   total = computed(() => this.cum().at(-1) ?? 0);
+  ownDays = computed(() => this.cur() - this.sd() + 1);
   span = computed(() => Math.max(this.cur(), 7));
   x = (d: number) => this.L + ((d - 1) / Math.max(this.span() - 1, 1)) * (this.W - this.L - this.R);
   xTicks = computed(() => { const s = this.span(); const step = s <= 10 ? 1 : s <= 20 ? 3 : 5; const t: number[] = []; for (let d = 1; d <= s; d += step) t.push(d); return t; });
-  yMax = computed(() => Math.max(this.cur(), 5));
+  yMax = computed(() => Math.max(this.ownDays(), 5));
   y1 = (v: number) => this.T + (1 - v / this.yMax()) * (this.H1 - this.T - this.B);
   yTicks1 = computed(() => [0, Math.round(this.yMax() / 2), this.yMax()]);
-  linePath = computed(() => this.cum().map((v, i) => `${i ? 'L' : 'M'}${this.x(i + 1).toFixed(1)},${this.y1(v).toFixed(1)}`).join(''));
-  areaPath = computed(() => { const c = this.cum(); return c.length ? `${this.linePath()}L${this.x(c.length).toFixed(1)},${this.y1(0)}L${this.x(1).toFixed(1)},${this.y1(0)}Z` : ''; });
+  linePath = computed(() => this.cum().map((v, i) => (v === null ? '' : `${i + 1 === this.sd() ? 'M' : 'L'}${this.x(i + 1).toFixed(1)},${this.y1(v).toFixed(1)}`)).join(''));
+  areaPath = computed(() => { const c = this.cum(); return c.length ? `${this.linePath()}L${this.x(c.length).toFixed(1)},${this.y1(0)}L${this.x(this.sd()).toFixed(1)},${this.y1(0)}Z` : ''; });
   /** медалі «Шляху» на лінії — у той день, коли їх отримано */
   milestones = computed(() => {
     const c = this.cum();
@@ -214,12 +219,12 @@ export class ProgressCharts {
   // ---- ефективність, %: ✅ 100, 🟨 50, ❌/без відмітки 0; точка дня = середнє за останні 3 дні
   private score = (s: DayStatus | undefined): number => (s === "done" ? 100 : s === "min" ? 50 : 0);
   /** дні, що вже минули; сьогоднішній — лише якщо вже є відмітка */
-  private counted = computed(() => { const d = this.days().slice(0, this.cur()); return d[d.length - 1] ? d : d.slice(0, -1); });
+  private counted = computed(() => { const d = this.days().slice(this.sd() - 1, this.cur()); return d[d.length - 1] ? d : d.slice(0, -1); });
   daily = computed(() => {
     const v = this.counted().map((s) => this.score(s));
     return this.counted().map((s, i) => {
       const w = v.slice(Math.max(0, i - 2), i + 1);
-      return { day: i + 1, s: s ?? 'miss', p: Math.round(w.reduce((a, b) => a + b, 0) / w.length) };
+      return { day: this.sd() + i, s: s ?? 'miss', p: Math.round(w.reduce((a, b) => a + b, 0) / w.length) };
     });
   });
   last = computed(() => this.daily().at(-1)?.p ?? 0);
@@ -231,7 +236,7 @@ export class ProgressCharts {
     const r = svg.getBoundingClientRect();
     const sx = ((ev.clientX - r.left) / r.width) * this.W;
     const d = Math.round(((sx - this.L) / (this.W - this.L - this.R)) * (this.span() - 1)) + 1;
-    const c = this.daily()[d - 1];
+    const c = this.daily().find((q) => q.day === d);
     if (!c) { this.hx4.set(null); this.tip.set(null); return; }
     this.hx4.set(d);
     const p = this.place(ev, this.x(d), this.y4(c.p));
@@ -244,9 +249,9 @@ export class ProgressCharts {
     const out = [] as { n: number; label: string; len: number; elapsed: number; ok: number; done: number; min: number; miss: number; none: number; started: boolean }[];
     for (let w = 0; w * 7 < this.total30; w++) {
       const from = w * 7, to = Math.min(from + 7, this.total30), len = to - from;
-      const past = d.slice(from, Math.min(to, cur));
+      const past = d.slice(Math.max(from, this.sd() - 1), Math.min(to, cur));
       out.push({
-        n: w + 1, label: len === 7 ? `${w + 1}-й` : `${from + 1}–${to}`, len, started: cur > from, elapsed: past.length,
+        n: w + 1, label: len === 7 ? `${w + 1}-й` : `${from + 1}–${to}`, len, started: cur > from && this.sd() <= to, elapsed: past.length,
         ok: past.filter(ok).length, done: past.filter((s) => s === 'done').length, min: past.filter((s) => s === 'min').length,
         miss: past.filter((s) => s === 'miss').length, none: past.filter((s) => !s).length,
       });
@@ -268,7 +273,7 @@ export class ProgressCharts {
     const t = this.stamps() ?? [], d = this.days(), cur = this.cur();
     const fmt = new Intl.DateTimeFormat('uk-UA', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
     return t.slice(0, cur).map((iso, i) => {
-      if (!iso || !d[i]) return null;
+      if (!iso || !d[i] || i + 1 < this.sd()) return null;
       const [hh, mm] = fmt.format(new Date(iso)).split(':').map(Number);
       return { day: i + 1, h: hh + mm / 60, label: fmt.format(new Date(iso)), status: d[i] as string };
     }).filter((v): v is { day: number; h: number; label: string; status: string } => !!v);
@@ -287,10 +292,10 @@ export class ProgressCharts {
     const r = svg.getBoundingClientRect();
     const sx = ((ev.clientX - r.left) / r.width) * this.W;
     const d = Math.round(((sx - this.L) / (this.W - this.L - this.R)) * (this.span() - 1)) + 1;
-    if (d < 1 || d > this.cur()) { this.hx.set(null); this.tip.set(null); return; }
+    if (d < this.sd() || d > this.cur()) { this.hx.set(null); this.tip.set(null); return; }
     this.hx.set(d);
     const s = this.days()[d - 1];
-    const p = this.place(ev, this.x(d), this.y1(this.cum()[d - 1]));
+    const p = this.place(ev, this.x(d), this.y1(this.cum()[d - 1] ?? 0));
     this.tip.set({ ...p, value: `${this.cum()[d - 1]} зараховано`, title: `День ${d}`, sub: s ? `${ICON[s]} ${s === 'done' ? 'зроблено' : s === 'min' ? 'мінімум' : 'пропуск'}` : 'без відмітки' });
   }
   hoverWeek(ev: Event, w: ReturnType<ProgressCharts['weeks']>[number]) {

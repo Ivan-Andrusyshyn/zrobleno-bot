@@ -4,6 +4,18 @@ import { TOTAL_DAYS, todayYmd, dayNumber } from "./parse.js";
 export const TZ = (env) => env?.TIMEZONE || "Europe/Kiev";
 export const FINISH_DAYS = 24; // пройшов потік = ≥ 24 зарахованих днів із 30
 
+/**
+ * Особистий перший день учасника в потоці: день приєднання або день першої відмітки — що раніше.
+ * Хто прийшов на старт (або раніше) — 1. Від цього дня рахуються %, ефективність і тижневі цифри;
+ * нумерація днів, підсумки й правило «пройшов = 24/30» лишаються спільними для всіх.
+ */
+export function personalStartDay(joinedAt, startDate, markedDays, tz = "Europe/Kiev") {
+  const first = markedDays.length ? Math.min(...markedDays) : Infinity;
+  let joinDay = 1;
+  if (startDate && joinedAt) joinDay = dayNumber(startDate, todayYmd(new Date(joinedAt), tz));
+  return Math.max(1, Math.min(TOTAL_DAYS, joinDay, first));
+}
+
 /** «2026-11-10» + n днів → «2026-…» */
 export function addDays(ymd, n) {
   const [y, m, d] = ymd.split("-").map(Number);

@@ -15,6 +15,8 @@ export interface Participant {
   why?: string;
   /** 30 значень: статус кожного дня (null — відмітки немає) */
   days: DayStatus[];
+  /** Особистий перший день у потоці (хто приєднався пізніше — % рахується від нього). Немає — 1 */
+  startDay?: number;
   /** 30 значень: коли людина вперше відмітила цей день (ISO), null — немає відмітки */
   times?: (string | null)[];
   /** Повні тексти відміток, новіші зверху */
@@ -46,11 +48,16 @@ export function currentStreak(p: Participant, uptoDay: number): number {
   return streak;
 }
 
+/** % виконано — від особистого першого дня учасника (для тих, хто прийшов на старт, це 1-й день) */
 export function completion(p: Participant, uptoDay: number): number {
-  const n = Math.max(1, Math.min(uptoDay, p.days.length));
-  const ok = p.days.slice(0, n).filter((s) => s === 'done' || s === 'min').length;
+  const from = Math.max(1, p.startDay ?? 1);
+  const n = Math.max(1, Math.min(uptoDay, p.days.length) - from + 1);
+  const ok = p.days.slice(from - 1, from - 1 + n).filter((s) => s === 'done' || s === 'min').length;
   return Math.round((ok / n) * 100);
 }
+
+/** «з 11-го дня» — лише для тих, хто приєднався посеред потоку */
+export const lateLabel = (p: Participant) => ((p.startDay ?? 1) > 1 ? `з ${p.startDay}-го дня` : '');
 
 /** Прибирає повтор «День 5 ✅ —» на початку коментаря (спільна з ботом функція) */
 export { cleanText } from '../../shared/rewards.js';

@@ -5,6 +5,7 @@ import { tg } from "./telegram.js";
 import { store } from "./store.js";
 import { TOTAL_DAYS, todayYmd, dayNumber } from "./parse.js";
 import { quietLines } from "./medals.js";
+import { personalStartDay } from "./streams.js";
 
 export const WEEK_DAYS = 7;
 const TIMEZONE = (env) => env.TIMEZONE || "Europe/Kiev";
@@ -14,6 +15,7 @@ const MAX_ROWS = 40; // ліміт повідомлення Telegram — 4096 с
 
 const SQ = { done: "🟩", min: "🟨", miss: "⬛" };
 const EMPTY = "⬜";
+const PRE = "▫️"; // день до приходу в потік
 const ok = (s) => s === "done" || s === "min";
 
 /** Номер тижня, підсумок якого треба опублікувати в цей день (день 8 → 1, 15 → 2 …), інакше null */
@@ -26,7 +28,7 @@ export function weekDueOn(day) {
 const range = (week) => [(week - 1) * WEEK_DAYS + 1, week * WEEK_DAYS];
 
 /** Текст підсумку тижня. people/marks — як із store.participantsWithCheckins() */
-export function weekSummaryText({ people, marks }, week, site, extra = []) {
+export function weekSummaryText({ people, marks }, week, site, extra = [], { startDate = null, tz = "Europe/Kiev" } = {}) {
   const [from, to] = range(week);
   const byUser = new Map(people.map((p) => [p.userId, Array(TOTAL_DAYS).fill(null)]));
   for (const m of marks) {
@@ -35,24 +37,29 @@ export function weekSummaryText({ people, marks }, week, site, extra = []) {
   }
 
   const rows = [];
-  let silent = 0;
+  let silent = 0, eligibleSilent = 0;
   for (const p of people) {
     const days = byUser.get(p.userId);
     if (!days.slice(0, to).some(Boolean)) continue; // ще жодного разу не відмічався — не рахуємо
+    // хто приєднався посеред потоку — дні до його першого дня не рахуються ні йому, ні групі
+    const start = personalStartDay(p.joinedAt, startDate, days.flatMap((v, d) => (v ? [d + 1] : [])), tz);
+    if (start > to) continue; // ще не був у потоці цього тижня
     const w = days.slice(from - 1, to);
+    const pre = Math.max(0, start - from); // днів цього тижня до приходу
+    const eligible = WEEK_DAYS - pre;
     const count = w.filter(ok).length;
-    if (!w.some(Boolean)) { silent++; continue; }
+    if (!w.some(Boolean)) { silent++; eligibleSilent += eligible; continue; }
     let streak = 0;
     for (let i = to - 1; i >= 0 && ok(days[i]); i--) streak++;
     const lastOk = ok(w[WEEK_DAYS - 1]);
-    const comeback = lastOk && w.slice(0, -1).some((s) => !ok(s)) && count >= 2;
-    rows.push({ name: p.name || p.tgName || "Учасник", w, count, streak, comeback });
+    const comeback = lastOk && w.slice(pre, -1).some((s) => !ok(s)) && count >= 2; // дні до приходу — не пропуск
+    rows.push({ name: p.name || p.tgName || "Учасник", w, count, streak, comeback, pre, eligible });
   }
 
   const active = rows.length + silent;
   if (!active) return null;
   const okTotal = rows.reduce((a, r) => a + r.count, 0);
-  const pct = Math.round((okTotal / (active * WEEK_DAYS)) * 100);
+  const pct = Math.round((okTotal / (rows.reduce((a, r) => a + r.eligible, 0) + eligibleSilent)) * 100);
   const perfect = rows.filter((r) => r.count === WEEK_DAYS).length;
   rows.sort((a, b) => b.count - a.count || b.streak - a.streak || a.name.localeCompare(b.name, "uk"));
 
@@ -63,7 +70,7 @@ export function weekSummaryText({ people, marks }, week, site, extra = []) {
     `Ідеальний тиждень (${WEEK_DAYS}/${WEEK_DAYS}): ${perfect} з ${active}`,
     "",
     ...rows.slice(0, MAX_ROWS).map((r) =>
-      `${r.w.map((s) => SQ[s] || EMPTY).join("")} ${r.count}/${WEEK_DAYS}${r.streak >= 3 ? ` 🔥${r.streak}` : ""} — ${r.name}`),
+      `${r.w.map((s, i) => (i < r.pre ? PRE : SQ[s] || EMPTY)).join("")} ${r.count}/${r.eligible}${r.streak >= 3 ? ` 🔥${r.streak}` : ""} — ${r.name}`),
   ];
   if (rows.length > MAX_ROWS) lines.push(`…і ще ${rows.length - MAX_ROWS}`);
   if (silent) lines.push(`${silent} ${silent === 1 ? "учасник" : "учасників"} без відміток цього тижня — чекаємо назад 💪`);
@@ -91,7 +98,7 @@ function hourIn(now, timeZone) {
 export async function postWeek(env, db, s, week, day, api) {
   // «тихі» нагороди (Ранок, Сова, Перший…) — рядком у підсумку, якщо медалі в чаті ввімкнено
   const quiet = s.medalsInChat === true ? await db.unreportedQuiet() : [];
-  const text = weekSummaryText(await db.participantsWithCheckins(), week, SITE(env), quietLines(quiet));
+  const text = weekSummaryText(await db.participantsWithCheckins(), week, SITE(env), quietLines(quiet), { startDate: s.startDate, tz: TIMEZONE(env) });
   if (!text) return { posted: false, reason: "немає учасників з відмітками" };
   if (!s.groupId) return { posted: false, reason: "група коментарів не підключена" };
   const root = day ? await db.dayThread(s.groupId, day) : null;

@@ -33,6 +33,7 @@ import { DayStatus } from './models';
     .miss svg { stroke: #8a8a8a; }
     .empty { background: #141414; box-shadow: inset 0 0 0 1px #2a2a2a; }
     .future { background: #0e0e0e; box-shadow: inset 0 0 0 1px #1c1c1c; }
+    .pre { background: repeating-linear-gradient(45deg, #121212 0 3px, #0b0b0b 3px 6px); box-shadow: inset 0 0 0 1px #1a1a1a; }
     .today { box-shadow: 0 0 0 2px #fff; }
     .n { font-size: 12px; color: #6f6f6f; font-weight: 600; }
     @media (min-width: 720px) { .grid { gap: 6px; } }
@@ -42,13 +43,16 @@ export class DayGrid {
   days = input.required<DayStatus[]>();
   currentDay = input.required<number>();
   big = input(false);
+  /** особистий перший день: клітинки до нього — «ще не в потоці», а не пропуски */
+  startDay = input(1);
 
   cells = computed(() => {
     const cur = this.currentDay();
     return this.days().map((s, i) => {
       const day = i + 1;
-      let cls = s ?? (day < cur ? 'empty' : day === cur ? 'empty' : 'future');
-      const label = s === 'done' ? 'зроблено' : s === 'min' ? 'мінімум — зараховано ✓' : s === 'miss' ? 'пропуск' : day <= cur ? 'без відмітки' : 'попереду';
+      const pre = !s && day < this.startDay();
+      let cls = s ?? (pre ? 'pre' : day < cur ? 'empty' : day === cur ? 'empty' : 'future');
+      const label = s === 'done' ? 'зроблено' : s === 'min' ? 'мінімум — зараховано ✓' : s === 'miss' ? 'пропуск' : pre ? 'ще не в потоці' : day <= cur ? 'без відмітки' : 'попереду';
       if (day === cur) cls += ' today';
       return { cls, label };
     });

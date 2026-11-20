@@ -6,7 +6,7 @@ import { DayGrid } from './day-grid';
 import { RewardsBlock } from './rewards';
 import { ProgressCharts } from './progress-charts';
 import { firstOfDayCounts, rewardsOf } from './rewards-logic';
-import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './models';
+import { STATUS_ICON, cleanText, completion, currentStreak, daysWord, lateLabel } from './models';
 
 @Component({
   selector: 'app-participant',
@@ -18,6 +18,7 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
         <div class="avatar" aria-hidden="true">{{ p.name.charAt(0) }}</div>
         <h1>{{ p.name }}</h1>
         <p class="habit">{{ p.habit }}</p>
+        @if (late()) { <p class="late">У потоці {{ late() }} — % і графіки рахуються від цього дня</p> }
         @if (rw()?.latest; as l) {
           <span class="badge" [class]="'badge ' + l.tier">{{ l.icon }} {{ l.name }}</span>
         }
@@ -35,11 +36,11 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
       </div>
 
       @if (tab() === 'charts') {
-        <app-progress-charts [days]="p.days" [stamps]="p.times" [currentDay]="day()" />
+        <app-progress-charts [days]="p.days" [stamps]="p.times" [currentDay]="day()" [startDay]="p.startDay ?? 1" />
       } @else {
       @if (rw(); as r) { <app-rewards [r]="r" /> }
 
-      <app-day-grid [days]="p.days" [currentDay]="day()" [big]="true" />
+      <app-day-grid [days]="p.days" [currentDay]="day()" [big]="true" [startDay]="p.startDay ?? 1" />
 
       <section class="comments" aria-labelledby="c-title">
         <h2 id="c-title">Відмітки</h2>
@@ -93,6 +94,7 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord } from './m
     .c-at { margin-left: auto; color: var(--muted); font-size: 12px; }
     .c-text { margin: 6px 0 0; font-size: 15px; line-height: 1.45; white-space: pre-line; word-break: break-word; }
     :host { display: block; max-width: 560px; margin: 0 auto; }
+    .late { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
     .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--card); border-radius: 14px; padding: 4px; margin: 18px 0 0; }
     .tabs button { border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 700; font-size: 14px; padding: 9px 0; border-radius: 10px; cursor: pointer; }
     .tabs button.on { background: #2a2a2a; color: #fff; }
@@ -122,6 +124,7 @@ export class ParticipantPage {
   p = computed(() => this.data.byId(Number(this.id())));
   streak = computed(() => (this.p() ? currentStreak(this.p()!, this.day()) : 0));
   tab = signal<'days' | 'charts'>('days');
+  late = computed(() => (this.p() ? lateLabel(this.p()!) : ''));
   pct = computed(() => (this.p() ? completion(this.p()!, this.day()) : 0));
   rw = computed(() => {
     const p = this.p();

@@ -317,7 +317,7 @@ export async function store(db) {
       async participantsWithCheckins() {
         const [p, c] = await db.batch([
           db.prepare(
-            "SELECT p.user_id AS userId, p.tg_name AS tgName, p.name, COALESCE(m.habit, p.habit) AS habit, COALESCE(m.minimum, p.minimum) AS minimum, COALESCE(m.why, p.why) AS why " +
+            "SELECT p.user_id AS userId, p.tg_name AS tgName, p.name, COALESCE(m.habit, p.habit) AS habit, COALESCE(m.minimum, p.minimum) AS minimum, COALESCE(m.why, p.why) AS why, m.joined_at AS joinedAt " +
             "FROM stream_members m JOIN participants p ON p.user_id = m.user_id WHERE m.stream_id = ? AND p.hidden = 0 ORDER BY p.joined_at",
           ).bind(sid),
           db.prepare(

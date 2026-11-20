@@ -4,7 +4,7 @@ type Status = 'done' | 'min' | 'miss' | null;
 export interface PathMedal { at: number; icon: string; short: string; name: string; tier: Tier }
 export interface BonusDef { key: BonusKey; icon: string; short: string; name: string; tier: Tier; instant: boolean; rule: string }
 export type BonusKey = 'phoenix' | 'perfectWeek' | 'weekend' | 'storyteller' | 'earlyBird' | 'nightOwl' | 'firstOfDay' | 'minimalist';
-export interface RewardsInput { id: number; days: Status[]; times?: (string | null)[]; comments?: { day: number; text: string }[] }
+export interface RewardsInput { id: number; days: Status[]; times?: (string | null)[]; comments?: { day: number; text: string }[]; startDay?: number }
 export interface ChallengeLike { startDate: string | null; currentDay: number; totalDays: number }
 export interface Rewards {
   okDays: number;

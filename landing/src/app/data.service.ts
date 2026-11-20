@@ -66,7 +66,10 @@ function demoData(): ParticipantsResponse {
       // демо-час відмітки: хтось жайворонок, хтось сова, решта ввечері
       const hourUtc = [5, 21, 16, 6, 16, 21, 15, 16][i % 8];
       const times = days.map((s, d) => s && new Date(Date.UTC(2026, 10, 10 + d, hourUtc, (i * 7 + d * 3) % 60)).toISOString());
-      return { id: i + 1, name, habit, minimum, days, times, comments };
+      // демо: останній учасник приєднався пізніше — з 6-го дня
+      const startDay = i === people.length - 1 ? 6 : 1;
+      if (startDay > 1) for (let d = 0; d < startDay - 1; d++) { days[d] = null; times[d] = null; }
+      return { id: i + 1, name, habit, minimum, days, times, comments: startDay > 1 ? comments.filter((c) => c.day >= startDay) : comments, startDay };
     }),
   };
 }

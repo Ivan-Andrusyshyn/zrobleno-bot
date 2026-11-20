@@ -6,6 +6,7 @@
 import { awardKeys, firstOfDayCounts, rewardsOf, TIER_LABEL, BONUS } from "../shared/rewards.js";
 import { TOTAL_DAYS } from "./parse.js";
 import { currentDayOf } from "./weekly.js";
+import { personalStartDay } from "./streams.js";
 
 export const SITE = (env) => env.SITE_URL || "https://zrobleno.pages.dev";
 const daysWord = (n) => {
@@ -28,6 +29,11 @@ export async function loadForRewards(db, s, env) {
     p.days[m.day - 1] = m.status;
     p.times[m.day - 1] = m.firstAt ?? m.updatedAt ?? null;
     if (m.text) p.comments.push({ day: m.day, text: m.text });
+  }
+  // особистий перший день (для тих, хто прийшов посеред потоку)
+  for (const p of people) {
+    const x = byUser.get(p.userId);
+    x.startDay = personalStartDay(p.joinedAt, s.startDate, x.days.flatMap((v, d) => (v ? [d + 1] : [])), env.TIMEZONE || "Europe/Kiev");
   }
   const challenge = { startDate: s.startDate || null, currentDay: await currentDayOf(db, s, env), totalDays: TOTAL_DAYS };
   const list = [...byUser.values()];

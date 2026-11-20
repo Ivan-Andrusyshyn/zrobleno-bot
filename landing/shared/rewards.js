@@ -1,7 +1,7 @@
 // Нагороди учасника — ОДНА логіка для сайту (src/app) і бота (server/).
 // Усе рахується на льоту з відміток; у базі зберігається лише, що бот уже оголосив (таблиця awards).
 //
-// participant: { id, days: ('done'|'min'|'miss'|null)[], times?: (ISO|null)[], comments?: { day, text }[] }
+// participant: { id, days: ('done'|'min'|'miss'|null)[], times?: (ISO|null)[], comments?: { day, text }[], startDay?: number }
 // challenge:   { startDate: 'YYYY-MM-DD' | null, currentDay, totalDays }
 
 const TZ = "Europe/Kiev";
@@ -91,8 +91,9 @@ export function rewardsOf(p, ch, firstCounts) {
     return { ...m, got, isNew: got && (reachedOn.get(m.at) ?? 0) >= cur - 1 };
   });
 
+  // Фенікс — лише після справжнього пропуску в потоці: дні до приходу (startDay) не рахуються
   let phoenix = 0;
-  for (let i = 1; i < days.length; i++) if (!ok(days[i - 1]) && ok(days[i])) phoenix++;
+  for (let i = Math.max(1, p.startDay ?? 1); i < days.length; i++) if (!ok(days[i - 1]) && ok(days[i])) phoenix++;
 
   let perfectWeek = 0;
   for (let w = 0; (w + 1) * 7 <= days.length; w++) if (days.slice(w * 7, w * 7 + 7).every(ok)) perfectWeek++;
