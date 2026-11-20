@@ -1,6 +1,6 @@
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { Location } from '@angular/common';
-import { Router, RouterLink } from '@angular/router';
+import { Router } from '@angular/router';
 import { DataService } from './data.service';
 import { DayGrid } from './day-grid';
 import { RewardsBlock } from './rewards';
@@ -10,9 +10,9 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord, lateLabel 
 
 @Component({
   selector: 'app-participant',
-  imports: [RouterLink, DayGrid, RewardsBlock, ProgressCharts],
+  imports: [DayGrid, RewardsBlock, ProgressCharts],
   template: `
-    <a class="back" routerLink="/" (click)="back($event)">← Усі учасники</a>
+    <a class="back" href="/" (click)="back($event)">← Усі учасники</a>
     @if (p(); as p) {
       <header>
         <div class="avatar" aria-hidden="true">{{ p.name.charAt(0) }}</div>
@@ -112,11 +112,14 @@ export class ParticipantPage {
   private router = inject(Router);
   private location = inject(Location);
   // прийшли зі списку → крок назад в історії: список відкриється на тому ж місці
-  back(e: Event) {
-    const prev = this.router.lastSuccessfulNavigation()?.previousNavigation?.finalUrl;
-    if (!prev || this.router.serializeUrl(prev).split('?')[0] !== '/') return; // відкрили профіль за посиланням — звичайний перехід на головну
+  // Без routerLink: раніше спрацьовували обидва — routerLink вів на «/», а back() одразу повертав
+  // назад у профіль («кидає на головну і вертає»). Тепер рівно одна дія.
+  back(e: MouseEvent) {
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return; // відкрити в новій вкладці — як звичайне посилання
     e.preventDefault();
-    this.location.back();
+    const prev = this.router.lastSuccessfulNavigation()?.previousNavigation?.finalUrl;
+    if (prev && this.router.serializeUrl(prev).split('?')[0] === '/') this.location.back();
+    else this.router.navigateByUrl('/'); // відкрили профіль за посиланням — звичайний перехід на головну
   }
   id = input.required<string>();
 
