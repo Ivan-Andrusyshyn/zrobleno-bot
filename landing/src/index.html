@@ -2,6 +2,22 @@
 <html lang="uk">
 <head>
   <meta charset="utf-8">
+  <!-- Старі iPhone (iOS 15.0–15.3): немає Object.hasOwn і Array.at — додаємо, на нових браузерах нічого не робить -->
+  <script>
+    if (!Object.hasOwn) {
+      Object.hasOwn = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
+    }
+    if (!Array.prototype.at) {
+      Object.defineProperty(Array.prototype, 'at', {
+        value: function (n) {
+          n = Math.trunc(n) || 0;
+          if (n < 0) n += this.length;
+          return n < 0 || n >= this.length ? undefined : this[n];
+        },
+        writable: true, configurable: true
+      });
+    }
+  </script>
   <title>Зроблено. — 30-денний челендж звичок</title>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
