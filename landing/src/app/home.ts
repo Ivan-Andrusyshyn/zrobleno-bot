@@ -21,11 +21,10 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord, lateLabel 
       <div class="stat"><b>{{ dayLabel() }}</b><span>день челенджу</span></div>
       <div class="stat"><b>{{ data.participants().length }}</b><span>учасників</span></div>
       <div class="stat"><b>{{ checkedToday() }}</b><span>відмітилися сьогодні</span></div>
+      @if (data.participants().length) {
+        <app-group-progress class="wide" [participants]="data.participants()" [currentDay]="day()" [totalDays]="data.challenge().totalDays" />
+      }
     </section>
-
-    @if (data.participants().length) {
-      <app-group-progress [participants]="data.participants()" [currentDay]="day()" [totalDays]="data.challenge().totalDays" />
-    }
 
     <app-rules />
 
@@ -97,6 +96,7 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord, lateLabel 
     .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 24px 0 16px; }
     .stat { background: var(--card); border-radius: 16px; padding: 14px 12px; display: grid; gap: 2px; }
     .stat b { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
+    .wide { grid-column: 1 / -1; }
     .stat span { font-size: 12px; color: var(--muted); line-height: 1.25; }
     .search input { width: 100%; box-sizing: border-box; height: 48px; border-radius: 14px; border: 1px solid #2a2a2a; background: #0f0f0f; color: #fff; padding: 0 16px; font: inherit; font-size: 16px; }
     .search input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }

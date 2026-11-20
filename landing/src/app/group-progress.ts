@@ -4,7 +4,7 @@ import { Participant } from './models';
 type Tip = { x: number; y: number; title: string; value: string; sub?: string } | null;
 
 /**
- * «Продуктивність потоку» на головній: середня ефективність усієї групи по днях.
+ * «Продуктивність групи» на головній (плитка під статистикою, по тапу — графік по днях): середня ефективність усієї групи по днях.
  * Рахується з тих самих відміток, що приходять на сайт: ✅ 100, 🟨 50, ❌ / без відмітки 0.
  * Кожен учасник рахується з його першого дня (хто прийшов пізніше — не тягне вниз дні до приходу).
  * Сьогоднішній день не показується, поки він триває (люди ще відмічаються).
@@ -13,11 +13,24 @@ type Tip = { x: number; y: number; title: string; value: string; sub?: string } 
   selector: 'app-group-progress',
   template: `
     <section class="ch" aria-labelledby="gp">
-      <div class="hd"><h2 id="gp">Продуктивність потоку</h2><span class="big">{{ total() }}%</span></div>
-      <p class="muted">Середня ефективність усієї групи по днях: ✅ = 100%, 🟨 = 50%, ❌ = 0%.</p>
+      <div class="hd"><h2 id="gp">Продуктивність групи</h2><span class="big">{{ total() }}%</span></div>
       @if (points().length) {
+        <div class="bar" role="img" [attr.aria-label]="'Виконано ' + share().done + '%, мінімум ' + share().min + '%, пропуски ' + share().miss + '%'">
+          @if (share().done) { <i class="b-done" [style.flex-grow]="share().done"></i> }
+          @if (share().min) { <i class="b-min" [style.flex-grow]="share().min"></i> }
+          @if (share().miss) { <i class="b-miss" [style.flex-grow]="share().miss"></i> }
+        </div>
+        <div class="leg">
+          <span>✅ {{ share().done }}% · 🟨 {{ share().min }}% · ❌ {{ share().miss }}%</span>
+          <button type="button" class="more" (click)="open.set(!open())" [attr.aria-expanded]="open()">{{ open() ? 'Сховати' : 'По днях ›' }}</button>
+        </div>
+      } @else {
+        <p class="muted empty">Зʼявиться після першого завершеного дня.</p>
+      }
+      @if (open() && points().length) {
+        <p class="muted">Середня ефективність групи по днях: ✅ = 100%, 🟨 = 50%, ❌ = 0%.</p>
         <div class="plot" (pointerleave)="tip.set(null); hx.set(null)">
-          <svg [attr.viewBox]="'0 0 ' + W + ' ' + H" role="img" [attr.aria-label]="'Продуктивність потоку ' + total() + '%'" (pointermove)="hover($event)">
+          <svg [attr.viewBox]="'0 0 ' + W + ' ' + H" role="img" [attr.aria-label]="'Продуктивність групи по днях' + '%'" (pointermove)="hover($event)">
             @for (g of [0, 25, 50, 75, 100]; track g) {
               <line class="grid" [attr.x1]="L" [attr.x2]="W - R" [attr.y1]="y(g)" [attr.y2]="y(g)" />
               <text class="ax" [attr.x]="L - 6" [attr.y]="y(g) + 3" text-anchor="end">{{ g }}</text>
@@ -41,20 +54,23 @@ type Tip = { x: number; y: number; title: string; value: string; sub?: string } 
           }
         </div>
         <p class="muted center">дні потоку</p>
-      } @else {
-        <p class="muted empty">Графік зʼявиться після першого завершеного дня.</p>
       }
     </section>
   `,
   styles: `
-    :host { display: block; margin-top: 16px; }
-    .ch { background: var(--card); border-radius: 20px; padding: 14px 14px 8px; }
+    :host { display: block; }
+    .ch { background: var(--card); border-radius: 16px; padding: 14px 12px; }
+    .bar { display: flex; gap: 2px; height: 12px; margin-top: 10px; }
+    .bar i { display: block; flex-basis: 0; min-width: 4px; border-radius: 4px; }
+    .b-done { background: var(--done); } .b-min { background: var(--min); } .b-miss { background: #333; }
+    .leg { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; color: #cfcfcf; }
+    .more { background: none; border: 0; color: var(--muted); font: inherit; font-size: 13px; padding: 6px 0 6px 8px; cursor: pointer; white-space: nowrap; }
     .hd { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
     h2 { margin: 0; font-size: 18px; font-weight: 800; }
-    .big { font-size: 24px; font-weight: 800; color: var(--done); }
+    .big { font-size: 26px; font-weight: 800; color: var(--done); }
     .muted { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
     .center { text-align: center; margin: 2px 0 6px; }
-    .empty { margin: 12px 0 8px; }
+    .empty { margin: 8px 0 0; }
     .plot { position: relative; margin-top: 8px; }
     svg { display: block; width: 100%; height: auto; overflow: visible; touch-action: pan-y; }
     .grid { stroke: #262626; stroke-width: 1; }
@@ -78,6 +94,7 @@ export class GroupProgress {
   readonly W = 340; readonly H = 180; readonly L = 30; readonly R = 8; readonly T = 14; readonly B = 18;
   tip = signal<Tip>(null);
   hx = signal<number | null>(null);
+  open = signal(false);
 
   /** завершені дні: до вчора включно (сьогодні люди ще відмічаються) */
   lastDay = computed(() => Math.min(this.currentDay() - 1, this.totalDays()));
@@ -101,6 +118,15 @@ export class GroupProgress {
     const p = this.points();
     const days = p.reduce((a, q) => a + q.people, 0);
     return days ? Math.round(p.reduce((a, q) => a + q.v * q.people, 0) / days) : 0;
+  });
+
+  /** частки всіх «людино-днів»: скільки ✅ / 🟨 / ❌ (сума = 100) */
+  share = computed(() => {
+    let done = 0, min = 0, all = 0;
+    for (const p of this.points()) { done += p.done; min += p.min; all += p.people; }
+    if (!all) return { done: 0, min: 0, miss: 0 };
+    const d = Math.round((done / all) * 100), m = Math.round((min / all) * 100);
+    return { done: d, min: m, miss: Math.max(0, 100 - d - m) };
   });
 
   x = (d: number) => this.L + ((d - 1) / Math.max(this.span() - 1, 1)) * (this.W - this.L - this.R);
