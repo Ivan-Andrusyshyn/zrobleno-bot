@@ -2,12 +2,23 @@
 import { TOTAL_DAYS, todayYmd, dayNumber } from "./parse.js";
 
 export const TZ = (env) => env?.TIMEZONE || "Europe/Kiev";
-export const FINISH_DAYS = 24; // пройшов потік = ≥ 24 зарахованих днів із 30
+export const FINISH_DAYS = 24; // пройшов потік з першого дня = ≥ 24 зарахованих днів із 30 (80%)
+export const MIN_STREAM_DAYS = 14; // щоб «пройти» потік, треба бути в ньому щонайменше 14 днів
+
+/**
+ * Скільки днів треба, щоб «пройти» потік, якщо людина в ньому з дня startDay:
+ * 80% від своїх днів (з 1-го дня — 24/30, з 11-го — 16/20). Хто прийшов, коли лишалось < 14 днів, —
+ * need = null: без вироку «пройшов / не пройшов», просто «приєднався пізніше».
+ */
+export function finishRule(startDay, total = TOTAL_DAYS) {
+  const span = total - Math.max(1, startDay) + 1;
+  return { span, need: span >= MIN_STREAM_DAYS ? Math.ceil((span * 4) / 5) : null };
+}
 
 /**
  * Особистий перший день учасника в потоці: день приєднання або день першої відмітки — що раніше.
  * Хто прийшов на старт (або раніше) — 1. Від цього дня рахуються %, ефективність і тижневі цифри;
- * нумерація днів, підсумки й правило «пройшов = 24/30» лишаються спільними для всіх.
+ * нумерація днів і тижнів лишається спільною для всіх; «пройшов» — 80% своїх днів (див. finishRule).
  */
 export function personalStartDay(joinedAt, startDate, markedDays, tz = "Europe/Kiev") {
   const first = markedDays.length ? Math.min(...markedDays) : Infinity;
@@ -99,8 +110,13 @@ export function uniqueName(list, name) {
   for (let i = 2; ; i++) if (!names.has(`${name} · ${i}`)) return `${name} · ${i}`;
 }
 
-/** Результати потоку: хто пройшов (≥ 24 зарахованих днів) */
-export async function streamResults(sdb) {
+/** Результати потоку: хто пройшов (≥ 80% своїх днів; з 1-го дня — 24/30). late — прийшов, коли лишалось < 14 днів */
+export async function streamResults(sdb, tz = "Europe/Kiev") {
+  const s = await sdb.all();
   const rows = await sdb.memberTotals();
-  return rows.map((r) => ({ ...r, days: r.ok, finished: r.ok >= FINISH_DAYS }));
+  return rows.map((r) => {
+    const startDay = personalStartDay(r.joinedAt, s.startDate, r.firstDay ? [r.firstDay] : [], tz);
+    const { span, need } = finishRule(startDay);
+    return { ...r, days: r.ok, startDay, span, need, late: need === null, finished: need !== null && r.ok >= need };
+  });
 }

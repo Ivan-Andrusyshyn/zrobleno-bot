@@ -330,7 +330,8 @@ export async function store(db) {
       /** Усі учасники потоку з кількістю зарахованих днів (для закриття потоку) */
       async memberTotals() {
         const { results } = await db.prepare(
-          "SELECT m.user_id AS userId, COALESCE(p.name, p.tg_name) AS name, p.hidden, " +
+          "SELECT m.user_id AS userId, COALESCE(p.name, p.tg_name) AS name, p.hidden, m.joined_at AS joinedAt, " +
+          "(SELECT MIN(c.day) FROM stream_checkins c WHERE c.stream_id = m.stream_id AND c.user_id = m.user_id) AS firstDay, " +
           "(SELECT COUNT(*) FROM stream_checkins c WHERE c.stream_id = m.stream_id AND c.user_id = m.user_id AND c.status IN ('done','min') AND c.day <= ?) AS ok " +
           "FROM stream_members m JOIN participants p ON p.user_id = m.user_id WHERE m.stream_id = ? ORDER BY p.joined_at",
         ).bind(TOTAL_DAYS, sid).all();

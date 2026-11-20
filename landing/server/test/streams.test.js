@@ -136,7 +136,7 @@ test("закриття потоку: результати, фінал у гру�
     at("2026-12-10T10:00:00Z");
     await click("c:1");
     const conf = sent.at(-1);
-    assert.match(conf.text, /Пройшли \(≥24\/30\): 1 з 2/);
+    assert.match(conf.text, /Пройшли \(≥80% своїх днів; з 1-го дня — 24\/30\): 1 з 2/);
     await click("cc:1:1");
     const fin = sent.filter((x) => x.chat_id === "-100" && x.method === "sendMessage").at(-1);
     assert.match(fin.text, /🏁 Потік «Листопад 2026» завершено!/);
@@ -279,4 +279,45 @@ test("пізній учасник не отримує Фенікса за сві
   const ch = { startDate: "2026-11-10", currentDay: 7, totalDays: 30 };
   assert.equal(rewardsOf({ id: 1, days, startDay: 5 }, ch, new Map()).bonus.phoenix, 0);
   assert.equal(rewardsOf({ id: 1, days: ["done", "miss", "done", ...Array(27).fill(null)] }, { ...ch, currentDay: 3 }, new Map()).bonus.phoenix, 1);
+});
+
+test("пізній учасник: «пройшов» = 80% своїх днів; хто прийшов за < 14 днів до кінця — без оцінки", async () => {
+  useClock();
+  try {
+    const { env, sent, addBot, pm, post, comment, click } = await setup();
+    await addBot(-100, "Основна");
+    await pm("/date 10.11.2026");
+    for (let d = 1; d <= 30; d++) {
+      at(new RealDate(RealDate.UTC(2026, 10, 9 + d, 8)).toISOString());
+      await post(-100, 100 * d, `День ${d}`);
+      if (d <= 23) await comment(-100, 100 * d + 1, 100 * d, "✅", { id: 7, first_name: "Оля" }); // 23/30 — не пройшла
+      if (d >= 11 && d <= 26) await comment(-100, 100 * d + 2, 100 * d, "✅", { id: 9, first_name: "Ніна" }); // з 11-го: 16/20 — пройшла
+      if (d >= 11 && d <= 25) await comment(-100, 100 * d + 3, 100 * d, "✅", { id: 10, first_name: "Іра" }); // з 11-го: 15/20 — ні
+      if (d >= 20) await comment(-100, 100 * d + 4, 100 * d, "✅", { id: 11, first_name: "Макс" }); // з 20-го: 11 днів — без оцінки
+    }
+    at("2026-12-10T10:00:00Z");
+    await click("c:1");
+    assert.match(sent.at(-1).text, /: 1 з 3/);
+    assert.match(sent.at(-1).text, /в останні 2 тижні: 1/);
+    await click("cc:1:1");
+    const fin = sent.filter((x) => x.chat_id === "-100" && x.method === "sendMessage").at(-1).text;
+    assert.match(fin, /🏆 Пройшли: 1 з 3/);
+    assert.match(fin, /🏆 Ніна — 16\/20 \(з 11-го дня\)/);
+    assert.doesNotMatch(fin, /Оля|Іра|Макс —/);
+    assert.match(fin, /Ще 1 приєдналися/);
+    const base = await store(env.DB);
+    const f = await base.finishedCounts();
+    assert.equal(f.get(9), 1);
+    assert.equal(f.get(7), undefined);
+    assert.equal(f.get(10), undefined);
+    assert.equal(f.get(11), undefined);
+  } finally { globalThis.Date = RealDate; }
+});
+
+test("finishRule: 24/30 з першого дня, 16/20 з 11-го, 12/14 з 17-го, з 18-го — без оцінки", async () => {
+  const { finishRule } = await import("../streams.js");
+  assert.deepEqual(finishRule(1), { span: 30, need: 24 });
+  assert.deepEqual(finishRule(11), { span: 20, need: 16 });
+  assert.deepEqual(finishRule(17), { span: 14, need: 12 });
+  assert.deepEqual(finishRule(18), { span: 13, need: null });
 });

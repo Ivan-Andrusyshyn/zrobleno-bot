@@ -78,15 +78,21 @@ async function screenStream(db, id, env) {
   };
 }
 
+/** «Оля — 16/20 (з 11-го дня)»; з першого дня — «Оля — 27/30» */
+const resultLine = (r) => `${r.name} — ${r.days}/${r.span}${r.startDay > 1 ? ` (з ${r.startDay}-го дня)` : ""}`;
+const RULE = `≥80% своїх днів; з 1-го дня — ${FINISH_DAYS}/${TOTAL_DAYS}`;
+
 async function screenClosed(db, st) {
   const res = await streamResults(db.forStream(st));
   const fin = res.filter((r) => r.finished);
+  const late = res.filter((r) => r.late);
   return {
     text: [
       `⚪ «${st.name}» · завершено`,
       st.startDate ? `${fmt(st.startDate)} – ${fmt(endDate(st))}` : "",
-      `🏆 Пройшли (≥${FINISH_DAYS} днів): ${fin.length} з ${res.length}`,
-      fin.length ? `\n${fin.map((r) => `${r.name} — ${r.days}/${TOTAL_DAYS}`).join("\n")}` : "",
+      `🏆 Пройшли (${RULE}): ${fin.length} з ${res.length - late.length}`,
+      fin.length ? `\n${fin.map(resultLine).join("\n")}` : "",
+      late.length ? `\n🕓 Приєднались в останні 2 тижні: ${late.length}` : "",
     ].filter(Boolean).join("\n"),
     kb: rows([wide(btn("← Усі потоки", "h"))]),
   };
@@ -153,10 +159,12 @@ async function screenClose(db, id) {
   const st = await db.stream(id);
   const res = await streamResults(db.forStream(st));
   const fin = res.filter((r) => r.finished);
+  const late = res.filter((r) => r.late);
   return {
     text: [
       `🏁 Закрити «${st.name}»?`,
-      `Пройшли (≥${FINISH_DAYS}/${TOTAL_DAYS}): ${fin.length} з ${res.length}`,
+      `Пройшли (${RULE}): ${fin.length} з ${res.length - late.length}`,
+      ...(late.length ? [`🕓 Приєднались в останні 2 тижні: ${late.length} — без оцінки «пройшов / ні»`] : []),
       "Результати збережуться в архіві, фінішерам +1 пройдений потік.",
       "Після закриття відмітки в цей потік більше не приймаються. Цю дію не можна скасувати.",
     ].join("\n"),
@@ -170,11 +178,13 @@ async function screenClose(db, id) {
 
 export function finalMessage(st, res, site) {
   const fin = res.filter((r) => r.finished && !r.hidden);
+  const late = res.filter((r) => r.late).length;
   return [
     `🏁 Потік «${st.name}» завершено!`,
     "",
-    `🏆 Пройшли: ${res.filter((r) => r.finished).length} з ${res.length}`,
-    ...(fin.length ? ["", ...fin.map((r) => `${r.days === TOTAL_DAYS ? "💎" : "🏆"} ${r.name} — ${r.days}/${TOTAL_DAYS}`)] : []),
+    `🏆 Пройшли: ${res.filter((r) => r.finished).length} з ${res.length - late}`,
+    ...(fin.length ? ["", ...fin.map((r) => `${r.days >= r.span ? "💎" : "🏆"} ${resultLine(r)}`)] : []),
+    ...(late ? ["", `🕓 Ще ${late} приєдналися в останні 2 тижні — чекаємо вас у наступному потоці з першого дня!`] : []),
     "",
     "Дякую всім, хто був у потоці! Кожен день — уже результат 💪",
     "",
@@ -187,7 +197,7 @@ export async function closeStream(db, id, withFinal, api, env) {
   const st = await db.stream(id);
   if (!st || st.status === "closed") return st;
   const v = db.forStream(st);
-  const res = await streamResults(v);
+  const res = await streamResults(v, TZ(env));
   await db.saveMemberResults(id, res);
   await db.updateStream(id, { status: "closed", closedAt: new Date().toISOString() });
   if (withFinal && st.groupId) {
