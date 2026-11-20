@@ -3,12 +3,13 @@ import { RouterLink } from '@angular/router';
 import { DataService } from './data.service';
 import { DayGrid } from './day-grid';
 import { Rules } from './rules';
+import { GroupProgress } from './group-progress';
 import { BONUS, firstOfDayCounts, rewardsOf } from './rewards-logic';
 import { STATUS_ICON, cleanText, completion, currentStreak, daysWord, lateLabel } from './models';
 
 @Component({
   selector: 'app-home',
-  imports: [RouterLink, DayGrid, Rules],
+  imports: [RouterLink, DayGrid, Rules, GroupProgress],
   template: `
     <section class="hero">
       <p class="eyebrow">30-денний челендж звичок</p>
@@ -21,6 +22,10 @@ import { STATUS_ICON, cleanText, completion, currentStreak, daysWord, lateLabel 
       <div class="stat"><b>{{ data.participants().length }}</b><span>учасників</span></div>
       <div class="stat"><b>{{ checkedToday() }}</b><span>відмітилися сьогодні</span></div>
     </section>
+
+    @if (data.participants().length) {
+      <app-group-progress [participants]="data.participants()" [currentDay]="day()" [totalDays]="data.challenge().totalDays" />
+    }
 
     <app-rules />
 
