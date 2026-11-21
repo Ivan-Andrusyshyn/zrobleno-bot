@@ -290,6 +290,14 @@ export async function store(db) {
           "INSERT OR IGNORE INTO stream_members (stream_id, user_id, habit, minimum, why, joined_at) SELECT ?, user_id, habit, minimum, why, ? FROM participants WHERE user_id = ?",
         ).bind(sid, now(), userId).run();
       },
+      /** Людина для «➕ Додати учасника»: анкета (з потоку, якщо є) і чи вже в потоці */
+      async member(userId) {
+        const r = await db.prepare(
+          "SELECT p.name, p.tg_name AS tgName, COALESCE(m.habit, p.habit) AS habit, COALESCE(m.minimum, p.minimum) AS minimum, COALESCE(m.why, p.why) AS why, " +
+          "m.joined_at AS joinedAt FROM participants p LEFT JOIN stream_members m ON m.user_id = p.user_id AND m.stream_id = ? WHERE p.user_id = ?",
+        ).bind(sid, userId).first();
+        return r ? { ...r, inStream: !!r.joinedAt } : null;
+      },
       async saveProfile(userId, p) {
         await db.batch([
           db.prepare("UPDATE participants SET name = ?, habit = ?, minimum = ?, why = ? WHERE user_id = ?")

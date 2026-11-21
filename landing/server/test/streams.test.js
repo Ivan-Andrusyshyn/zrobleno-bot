@@ -321,3 +321,58 @@ test("finishRule: 24/30 з першого дня, 16/20 з 11-го, 12/14 з 17-
   assert.deepEqual(finishRule(17), { span: 14, need: 12 });
   assert.deepEqual(finishRule(18), { span: 13, need: null });
 });
+
+test("➕ Додати учасника: переслане повідомлення → анкета → запис; відмітки в групі — їй; перший день — день додавання", async () => {
+  useClock();
+  try {
+    const { env, sent, upd, addBot, pm, post, comment, click, lastMenu } = await setup();
+    await addBot(-100, "Основна");
+    await pm("/date 10.11.2026");
+    at("2026-11-21T10:00:00Z"); // день 12
+    const fwd = (origin, extra = {}) => upd({ message: { date: sec(), message_id: 9000 + sent.length, chat: { id: 42, type: "private" }, from: { id: 42 }, forward_origin: origin, ...extra } });
+
+    // учасник не може ні відкрити, ні натиснути
+    await click("a:1", 77);
+    assert.equal(sent.filter((x) => x.chat_id === 77).length, 0);
+
+    await click("a:1");
+    assert.match(lastMenu().text, /Перешли мені будь-яке повідомлення/);
+    await pm("просто текст");
+    assert.match(lastMenu().text, /Це не переслане повідомлення/);
+    await fwd({ type: "hidden_user", sender_user_name: "Ліза" }, { text: "привіт" });
+    assert.match(lastMenu().text, /Ліза приховала свій акаунт/);
+    await fwd({ type: "user", sender_user: { id: 55, first_name: "Ніна", last_name: "Коваль" } }, { sticker: {} }); // навіть стікер
+    assert.match(lastMenu().text, /👤 Ніна К\./);
+    await pm("Ніна\nЧитати");
+    assert.match(lastMenu().text, /Не розібрав анкету/);
+    await pm("1. Ніна\n2. Читати\n3. 5 сторінок\n4. Для себе");
+    assert.match(lastMenu().text, /Записати в «Листопад 2026»\?/);
+    assert.match(lastMenu().text, /перший день — 12-й/);
+    await click("ay:1");
+    assert.match(lastMenu().text, /✅ Ніна тепер у «Листопад 2026»/);
+
+    let p = (await participantsPayload(env)).participants.find((x) => x.id === 55 || x.name === "Ніна");
+    assert.ok(p, "є на сайті");
+    assert.equal(p.habit, "Читати");
+    assert.equal(p.startDay, 12);
+
+    // її відмітка в групі зараховується їй, дублю немає
+    await post(-100, 1200, "День 12");
+    await comment(-100, 1201, 1200, "✅", { id: 55, first_name: "Ніна", last_name: "Коваль" });
+    const all = (await participantsPayload(env)).participants;
+    assert.equal(all.filter((x) => x.name === "Ніна").length, 1);
+    p = all.find((x) => x.name === "Ніна");
+    assert.equal(p.days[11], "done");
+
+    // повторне додавання: «вже в потоці», анкету можна залишити
+    await click("a:1");
+    await fwd({ type: "user", sender_user: { id: 55, first_name: "Ніна", last_name: "Коваль" } }, { text: "x" });
+    assert.match(lastMenu().text, /вже в «Листопад 2026»/);
+    assert.ok(kbText(lastMenu()).some((b) => b.startsWith("Залишити цю анкету|ak:1")));
+    await click("ak:1");
+    assert.match(lastMenu().text, /вже в потоці — перший день не зміниться/);
+    await click("ay:1");
+    assert.match(lastMenu().text, /вже була в потоці — анкету оновлено/);
+    assert.equal((await participantsPayload(env)).participants.find((x) => x.name === "Ніна").startDay, 12);
+  } finally { globalThis.Date = RealDate; }
+});

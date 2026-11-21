@@ -131,7 +131,8 @@ export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
 
   if (m.chat.type === "private") {
     if (m.text?.startsWith("/")) await handleCommand(m, db, api, env);
-    else if (m.text && u.message) await handleMenuText(m, db, api, env); // відповідь на питання меню (дата, назва)
+    // відповідь на питання меню (дата, назва, анкета) або переслане повідомлення для «➕ Додати учасника»
+    else if ((m.text || m.forward_origin || m.forward_from) && u.message) await handleMenuText(m, db, api, env);
     return;
   }
 

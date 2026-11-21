@@ -1,6 +1,6 @@
 // Меню адміна з кнопками (/start): спершу потік → далі Статус · Тиждень · Медалі · Дата · Закрити.
 // Працює лише для адмінів; учасникам бот в особистих не відповідає (див. handler.js).
-import { TOTAL_DAYS, todayYmd, dayNumber, parseDate } from "./parse.js";
+import { TOTAL_DAYS, todayYmd, dayNumber, parseDate, parseRegistration, displayName } from "./parse.js";
 import {
   TZ, addDays, endDate, dm, streamState, overlapIn, uniqueName, streamResults, pickCurrent, FINISH_DAYS,
 } from "./streams.js";
@@ -72,6 +72,7 @@ async function screenStream(db, id, env) {
     kb: rows([
       btn("📊 Статус", `st:${id}`), btn("📅 Тиждень", `w:${id}`),
       btn("🏅 Медалі", `md:${id}`), btn("⚙️ Дата старту", `dt:${id}`),
+      wide(btn("➕ Додати учасника", `a:${id}`)),
       wide(btn("🏁 Закрити потік", `c:${id}`)),
       wide(btn("← Усі потоки", "h")),
     ]),
@@ -265,6 +266,47 @@ function screenNewConfirm(draft) {
   };
 }
 
+// ---- ➕ додати учасника вручну: переслане повідомлення людини → анкета → підтвердження
+const ADD_ASK = "Перешли мені будь-яке повідомлення цієї людини — з групи чи з особистих.\nЗ нього я візьму її Telegram, щоб її відмітки в групі зараховувались саме їй.";
+const profileText = (p) => [`1. ${p.name}`, `2. ${p.habit}`, `3. ${p.minimum}`, `4. ${p.why}`].join("\n");
+
+async function screenAddProfile(db, st, d) {
+  const cur = await db.forStream(st).member(d.userId);
+  const has = cur && cur.habit && cur.minimum;
+  return {
+    text: [
+      `👤 ${d.tgName}${cur?.inStream ? ` — вже в «${st.name}»` : ""}`,
+      "",
+      "Надішли анкету — 4 рядки:",
+      "1. Імʼя",
+      "2. Звичка",
+      "3. Мінімум на важкий день",
+      "4. Навіщо",
+      "",
+      "Можна просто переслати анкету, яку людина скинула тобі.",
+      ...(has ? ["", `Зараз у неї:\n${profileText({ name: cur.name || cur.tgName, habit: cur.habit, minimum: cur.minimum, why: cur.why || "—" })}`] : []),
+    ].join("\n"),
+    kb: rows([
+      ...(has ? [wide(btn("Залишити цю анкету", `ak:${st.id}`))] : []),
+      wide(btn("Скасувати", `s:${st.id}`)),
+    ]),
+  };
+}
+
+async function screenAddConfirm(db, st, d, env) {
+  const cur = await db.forStream(st).member(d.userId);
+  const t = today(env);
+  const day = st.startDate && t >= st.startDate ? dayNumber(st.startDate, t) : 0;
+  const first = cur?.inStream ? "вже в потоці — перший день не зміниться"
+    : day > 1 && day <= TOTAL_DAYS ? `перший день — ${day}-й (сьогодні); дні до нього в неї «ще не в потоці»`
+    : "з першого дня потоку";
+  const p = d.profile || { name: cur?.name || d.tgName, habit: cur?.habit || "—", minimum: cur?.minimum || "—", why: cur?.why || "—" };
+  return {
+    text: [`Записати в «${st.name}»?`, "", `👤 ${d.tgName}`, profileText(p), "", `🗓 ${first}`].join("\n"),
+    kb: rows([btn("✅ Записати", `ay:${st.id}`), btn("✏️ Інша анкета", `ae:${st.id}`), wide(btn("Скасувати", `s:${st.id}`))]),
+  };
+}
+
 // ---------------------------------------------------------------- показ
 async function show(api, chatId, scr, editMsgId) {
   const body = { text: scr.text, reply_markup: { inline_keyboard: scr.kb }, link_preview_options: { is_disabled: true } };
@@ -327,6 +369,35 @@ export async function handleCallback(cq, db, api, env) {
       const st = await db.stream(id);
       await setPending(db, uid, { kind: "date", streamId: id });
       return go({ text: `⚙️ Дата старту «${st.name}»: ${fmt(st.startDate)}\n\nНапиши нову дату: 10.11 або 10.11.2026`, kb: rows([wide(btn("Скасувати", `s:${id}`))]) });
+    }
+    case "a": {
+      const st = await db.stream(id);
+      if (!st || st.status === "closed") return go(await screenStream(db, id, env));
+      await setPending(db, uid, { kind: "add", streamId: id, step: "fwd" });
+      return go({ text: `➕ Додати учасника в «${st.name}»\n\n${ADD_ASK}`, kb: rows([wide(btn("Скасувати", `s:${id}`))]) });
+    }
+    case "ak": case "ae": case "ay": {
+      const p = await getPending(db, uid);
+      const st = await db.stream(id);
+      if (p?.kind !== "add" || p.streamId !== id || !p.draft || !st) return go(await screenStream(db, id, env));
+      if (a === "ak") { // залишити наявну анкету
+        await setPending(db, uid, { ...p, step: "confirm", draft: { ...p.draft, profile: null } });
+        return go(await screenAddConfirm(db, st, { ...p.draft, profile: null }, env));
+      }
+      if (a === "ae") {
+        await setPending(db, uid, { ...p, step: "profile" });
+        return go(await screenAddProfile(db, st, p.draft));
+      }
+      if (st.status === "closed") return go(await screenStream(db, id, env));
+      const v = db.forStream(st);
+      const was = await v.member(p.draft.userId);
+      await v.touchParticipant(p.draft.userId, p.draft.tgName);
+      if (p.draft.profile) await v.saveProfile(p.draft.userId, p.draft.profile);
+      await setPending(db, uid, null);
+      const scr = await screenStream(db, id, env);
+      const who = p.draft.profile?.name || was?.name || p.draft.tgName;
+      scr.text = `✅ ${who} ${was?.inStream ? "вже була в потоці — анкету оновлено" : `тепер у «${st.name}»`}. Її відмітки в групі зараховуються їй, на сайті вона вже є.\n\n` + scr.text;
+      return go(scr);
     }
     case "c": return go(await screenClose(db, id));
     case "cc": {
@@ -397,7 +468,7 @@ export async function handleMenuText(m, db, api, env) {
   if (!(await isAdmin(db, m.from.id))) return false;
   const p = await getPending(db, m.from.id);
   if (!p) return false;
-  const text = m.text.trim();
+  const text = (m.text || m.caption || "").trim();
   const t = today(env);
   const ask = (msg, kb = rows([wide(btn("Скасувати", "h"))])) => show(api, m.chat.id, { text: msg, kb });
   const parseShort = (s) => {
@@ -411,6 +482,31 @@ export async function handleMenuText(m, db, api, env) {
     return ymd;
   };
 
+  if (p.kind === "add") {
+    const st = await db.stream(p.streamId);
+    if (!st || st.status === "closed") { await setPending(db, m.from.id, null); return show(api, m.chat.id, await screenHome(db, env)); }
+    const cancel = rows([wide(btn("Скасувати", `s:${st.id}`))]);
+    if (p.step === "fwd") {
+      const o = m.forward_origin;
+      const u = o?.type === "user" ? o.sender_user : m.forward_from;
+      if (o?.type === "hidden_user") {
+        return ask(`${o.sender_user_name || "Ця людина"} приховала свій акаунт при пересиланні — Telegram не показує, хто це.\nПопроси її написати анкету в коментарях під головним постом групи — бот запише її сам.`, cancel);
+      }
+      if (!u) return ask(o ? "Це переслано від імені каналу чи групи, а не людини. Перешли повідомлення самої людини." : `Це не переслане повідомлення.\n\n${ADD_ASK}`, cancel);
+      if (u.is_bot) return ask("Це бот 🙂 Перешли повідомлення людини.", cancel);
+      const draft = { userId: u.id, tgName: displayName(u.first_name, u.last_name) };
+      await setPending(db, m.from.id, { ...p, step: "profile", draft });
+      return show(api, m.chat.id, await screenAddProfile(db, st, draft));
+    }
+    if (p.step === "profile" || p.step === "confirm") {
+      const reg = parseRegistration(text);
+      if (!reg) return ask("Не розібрав анкету — потрібні всі 4 рядки:\n1. Імʼя\n2. Звичка\n3. Мінімум на важкий день\n4. Навіщо", cancel);
+      const draft = { ...p.draft, profile: reg };
+      await setPending(db, m.from.id, { ...p, step: "confirm", draft });
+      return show(api, m.chat.id, await screenAddConfirm(db, st, draft, env));
+    }
+    return false;
+  }
   if (p.kind === "date") {
     const ymd = parseDate(text) || (() => { const mm = text.match(/^(\d{1,2})[.\/](\d{1,2})$/); return mm ? parseDate(`${mm[1]}.${mm[2]}.${t.slice(0, 4)}`) : null; })();
     if (!ymd) return ask(`Не розібрав дату «${text}». Напиши як 10.11 або 10.11.2026`);
