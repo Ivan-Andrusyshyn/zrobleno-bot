@@ -8,12 +8,43 @@ const ICON: Record<string, string> = { done: '✅', min: '🟨', miss: '❌' };
 const TZ = 'Europe/Kiev';
 
 /**
- * Вкладка «Графіки» на сторінці учасника: три прості графіки з тих самих відміток.
+ * Вкладка «Графіки» на сторінці учасника: шлях до фінішу + прості графіки з тих самих відміток.
  * Один ряд даних на графік (лаймовий), без двох осей; значення — у підписах і підказках.
  */
 @Component({
   selector: 'app-progress-charts',
   template: `
+    <!-- 0. Шлях до фінішу: скільки треба, скільки лишилось, скільки можна пропустити -->
+    @if (finish(); as f) {
+      <section class="ch" aria-labelledby="c0">
+        <div class="hd"><h3 id="c0">Шлях до фінішу</h3>@if (f.need) { <span class="big">{{ f.got }}<small> з {{ f.need }}</small></span> }</div>
+        @if (f.need === null) {
+          <p class="muted">Ти в потоці з {{ f.start }}-го дня — до кінця менше 14 днів, тож у цьому потоці без оцінки «пройшов». Тримай серію, а наступний потік — з першого дня 💪</p>
+        } @else {
+          <p class="muted">Щоб пройти потік, треба зарахувати {{ f.need }} з {{ f.span }} твоїх днів (✅ або 🟨) — це 80%.</p>
+          <div class="goal" role="img" [attr.aria-label]="'Зараховано ' + f.got + ' з ' + f.need + ' потрібних; лишилось днів ' + f.left">
+            <div class="g-reach" [style.left.%]="pct(f.got, f.span)" [style.width.%]="pct(f.left, f.span)"></div>
+            <div class="g-fill" [style.width.%]="pct(f.got, f.span)"></div>
+            <div class="g-mark" [style.left.%]="pct(f.need, f.span)"><span>🏆 {{ f.need }}</span></div>
+          </div>
+          <div class="g-ax"><span>0</span><span><i class="g-k"></i> дні, що ще попереду</span><span>{{ f.span }}</span></div>
+          @if (f.passed) {
+            <p class="g-msg">🏆 Потік пройдено! Далі кожен день — бонус до медалей і серії.</p>
+          } @else if (f.canMiss! < 0) {
+            <p class="g-msg">Набрати {{ f.need }} вже не вийде — але кожен день і далі рахується в медалі й серію.</p>
+          } @else {
+            <div class="g-tiles">
+              <div><b>{{ f.need - f.got }}</b><span>ще потрібно</span></div>
+              <div><b>{{ f.left }}</b><span>днів лишилось</span></div>
+              <div [class.warn]="f.canMiss! <= 1"><b>{{ f.canMiss }}</b><span>можна пропустити</span></div>
+            </div>
+            @if (f.canMiss === 0) { <p class="g-msg">⚠️ Запасу немає — потрібен кожен день до кінця.</p> }
+            @else if (f.canMiss === 1) { <p class="g-msg">⚠️ Запас — лише 1 день.</p> }
+          }
+        }
+      </section>
+    }
+
     <!-- 1. Зараховано днів наростаючим підсумком -->
     <section class="ch" aria-labelledby="c1">
       <div class="hd"><h3 id="c1">Зараховано днів</h3><span class="big">{{ total() }}<small> з {{ ownDays() }}</small></span></div>
@@ -70,27 +101,6 @@ const TZ = 'Europe/Kiev';
         </svg>
       </div>
       <p class="muted center">дні челенджу</p>
-    </section>
-
-    <!-- 3. По тижнях -->
-    <section class="ch" aria-labelledby="c2">
-      <div class="hd"><h3 id="c2">По тижнях</h3><span class="muted">зараховано днів</span></div>
-      <div class="plot" (pointerleave)="tip.set(null)">
-        <svg [attr.viewBox]="'0 0 ' + W + ' ' + H2" role="img" aria-label="Зараховані дні по тижнях">
-          <line class="grid" [attr.x1]="L" [attr.x2]="W - R" [attr.y1]="y2(7)" [attr.y2]="y2(7)" />
-          <line class="axis" [attr.x1]="L" [attr.x2]="L" [attr.y1]="T - 4" [attr.y2]="y2(0)" />
-          <line class="axis" [attr.x1]="L" [attr.x2]="W - R" [attr.y1]="y2(0)" [attr.y2]="y2(0)" />
-          @for (w of weeks(); track w.n; let i = $index) {
-            <g class="bar" tabindex="0" (pointerenter)="hoverWeek($event, w)" (focus)="hoverWeek($event, w)" (blur)="tip.set(null)">
-              <rect class="hit" [attr.x]="bx(i) - 6" [attr.y]="T" [attr.width]="bw() + 12" [attr.height]="H2 - T - B" />
-              <rect class="slot" [attr.x]="bx(i)" [attr.y]="y2(w.len)" [attr.width]="bw()" [attr.height]="y2(0) - y2(w.len)" rx="4" />
-              @if (w.ok > 0) { <path class="fill" [attr.d]="barPath(bx(i), y2(w.ok), bw(), y2(0) - y2(w.ok))" /> }
-              <text class="val" [attr.x]="bx(i) + bw() / 2" [attr.y]="y2(w.len) - 6" text-anchor="middle">{{ w.started ? w.ok + '/' + w.elapsed : '' }}</text>
-              <text class="ax" [attr.x]="bx(i) + bw() / 2" [attr.y]="H2 - 4" text-anchor="middle">{{ w.label }}</text>
-            </g>
-          }
-        </svg>
-      </div>
     </section>
 
     <!-- 3. Коли відмічається -->
@@ -177,6 +187,19 @@ const TZ = 'Europe/Kiev';
     .tdot { fill: var(--done); stroke: var(--card); stroke-width: 2; }
     .pt:hover .tdot { stroke: #fff; }
     .empty { position: absolute; inset: 40% 0 auto; text-align: center; }
+    .goal { position: relative; height: 14px; margin: 26px 0 0; border-radius: 4px; background: #1f1f1f; }
+    .g-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--done); }
+    .g-reach { position: absolute; top: 0; bottom: 0; border-radius: 4px;
+               background: repeating-linear-gradient(135deg, #2c2c2c 0 4px, #1f1f1f 4px 8px); }
+    .g-mark { position: absolute; top: -6px; bottom: -6px; width: 2px; margin-left: -1px; background: #fff; border-radius: 1px; }
+    .g-mark span { position: absolute; bottom: calc(100% + 2px); left: 50%; transform: translateX(-50%); font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .g-ax { display: flex; justify-content: space-between; font-size: 10px; color: #8a8a8a; margin-top: 4px; }
+    .g-k { display: inline-block; width: 12px; height: 8px; border-radius: 2px; vertical-align: middle; background: repeating-linear-gradient(135deg, #3a3a3a 0 3px, #1f1f1f 3px 6px); }
+    .g-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
+    .g-tiles div { background: #1b1b1b; border-radius: 10px; padding: 8px; display: grid; gap: 2px; text-align: center; }
+    .g-tiles b { font-size: 20px; } .g-tiles span { font-size: 11px; color: var(--muted); }
+    .g-tiles .warn b { color: var(--min); }
+    .g-msg { margin: 10px 0 0; font-size: 14px; font-weight: 700; }
     .tip { position: absolute; transform: translate(-50%, calc(-100% - 10px)); pointer-events: none; background: #0c0c0c; border: 1px solid #333;
            border-radius: 10px; padding: 6px 10px; display: grid; gap: 1px; font-size: 12px; white-space: nowrap; z-index: 2; }
     .tip b { font-size: 14px; } .tip span { color: var(--muted); } .tip .sub { color: #cfcfcf; }
@@ -192,7 +215,7 @@ export class ProgressCharts {
 
   // геометрія (viewBox масштабується під ширину екрана)
   readonly W = 340; readonly L = 30; readonly R = 8; readonly T = 14; readonly B = 18;
-  readonly H1 = 170; readonly H2 = 140; readonly H3 = 170; readonly H4 = 180;
+  readonly H1 = 170; readonly H3 = 170; readonly H4 = 180;
   tip = signal<Tip>(null);
   hx = signal<number | null>(null);
 
@@ -243,24 +266,18 @@ export class ProgressCharts {
     this.tip.set({ ...p, value: `${c.p}%`, title: `День ${d}`, sub: c.s === 'done' ? '✅ максимум' : c.s === 'min' ? '🟨 мінімум' : '❌ пропуск' });
   }
 
-  // ---- тижні
-  weeks = computed(() => {
-    const d = this.days(), cur = this.cur();
-    const out = [] as { n: number; label: string; len: number; elapsed: number; ok: number; done: number; min: number; miss: number; none: number; started: boolean }[];
-    for (let w = 0; w * 7 < this.total30; w++) {
-      const from = w * 7, to = Math.min(from + 7, this.total30), len = to - from;
-      const past = d.slice(Math.max(from, this.sd() - 1), Math.min(to, cur));
-      out.push({
-        n: w + 1, label: len === 7 ? `${w + 1}-й` : `${from + 1}–${to}`, len, started: cur > from && this.sd() <= to, elapsed: past.length,
-        ok: past.filter(ok).length, done: past.filter((s) => s === 'done').length, min: past.filter((s) => s === 'min').length,
-        miss: past.filter((s) => s === 'miss').length, none: past.filter((s) => !s).length,
-      });
-    }
-    return out;
+  // ---- шлях до фінішу: те саме правило, що й у бота (server/streams.js finishRule): 80% своїх днів, якщо в потоці ≥ 14 днів
+  finish = computed(() => {
+    const T = this.total30, start = Math.max(1, this.startDay()), raw = this.currentDay();
+    const span = T - start + 1;
+    const need = span >= 14 ? Math.ceil((span * 4) / 5) : null;
+    const got = this.total();
+    const todayOpen = raw <= T && !this.days()[raw - 1];
+    const left = Math.max(0, T - raw) + (todayOpen ? 1 : 0);
+    const canMiss = need === null ? null : got + left - need;
+    return { start, span, need, got, left, canMiss, passed: need !== null && got >= need };
   });
-  bw = computed(() => (this.W - this.L - this.R) / this.weeks().length - 12);
-  bx = (i: number) => this.L + 6 + i * (this.bw() + 12);
-  y2 = (v: number) => this.T + (1 - v / 7) * (this.H2 - this.T - this.B);
+  pct = (v: number, of: number) => Math.max(0, Math.min(100, (v / of) * 100));
   /** стовпчик з округленим лише верхом — низ стоїть на базовій лінії */
   barPath(x: number, y: number, w: number, h: number) {
     const r = Math.min(4, h, w / 2);
@@ -297,14 +314,6 @@ export class ProgressCharts {
     const s = this.days()[d - 1];
     const p = this.place(ev, this.x(d), this.y1(this.cum()[d - 1] ?? 0));
     this.tip.set({ ...p, value: `${this.cum()[d - 1]} зараховано`, title: `День ${d}`, sub: s ? `${ICON[s]} ${s === 'done' ? 'зроблено' : s === 'min' ? 'мінімум' : 'пропуск'}` : 'без відмітки' });
-  }
-  hoverWeek(ev: Event, w: ReturnType<ProgressCharts['weeks']>[number]) {
-    this.hx.set(null);
-    const i = w.n - 1;
-    const p = this.place(ev, this.bx(i) + this.bw() / 2, this.y2(w.len));
-    this.tip.set(w.started
-      ? { ...p, value: `${w.ok} з ${w.elapsed}`, title: (w.len === 7 ? `${w.n}-й тиждень` : `Дні ${w.label}`) + (w.elapsed < w.len ? ' · триває' : ''), sub: `✅ ${w.done} · 🟨 ${w.min} · ❌ ${w.miss}${w.none ? ` · без відмітки ${w.none}` : ''}` }
-      : { ...p, value: 'ще попереду', title: w.len === 7 ? `${w.n}-й тиждень` : `Дні ${w.label}` });
   }
   hoverTime(ev: Event, t: { day: number; h: number; label: string; status: string }) {
     this.hx.set(null);
