@@ -6,14 +6,20 @@ import { DayStatus } from './models';
   selector: 'app-day-grid',
   template: `
     <ol class="grid" [class.big]="big()" [attr.aria-label]="'Прогрес: ' + summary()">
-      @for (s of cells(); track $index) {
-        <li class="cell" [class]="s.cls" [attr.title]="'День ' + ($index + 1) + ': ' + s.label">
+      @for (c of preChunks(); track $index) {
+        <li class="pre-block" [style.grid-column]="'span ' + c.span" [attr.title]="preTitle()">
+          @if (c.label) { <span>{{ c.label }}</span> }
+        </li>
+      }
+      @for (s of cells(); track s.day) {
+        <li class="cell" [class]="s.cls" [class.start]="s.start" [attr.title]="'День ' + s.day + ': ' + s.label + (s.start ? ' · старт' : '')">
+          @if (s.start) { <i class="flag" aria-hidden="true">🚩</i> }
           @if (s.cls.startsWith('done') || s.cls.startsWith('min')) {
             <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 10.5l3.2 3.2L15 7" /></svg>
           } @else if (s.cls.startsWith('miss')) {
             <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6.5 6.5l7 7M13.5 6.5l-7 7" /></svg>
           } @else if (big()) {
-            <span class="n">{{ $index + 1 }}</span>
+            <span class="n">{{ s.day }}</span>
           }
         </li>
       }
@@ -33,8 +39,12 @@ import { DayStatus } from './models';
     .miss svg { stroke: #8a8a8a; }
     .empty { background: #141414; box-shadow: inset 0 0 0 1px #2a2a2a; }
     .future { background: #0e0e0e; box-shadow: inset 0 0 0 1px #1c1c1c; }
-    .pre { background: repeating-linear-gradient(45deg, #121212 0 3px, #0b0b0b 3px 6px); box-shadow: inset 0 0 0 1px #1a1a1a; }
     .today { box-shadow: 0 0 0 2px #fff; }
+    .pre-block { border-radius: 6px; border: 1px dashed #2e2e2e; display: flex; align-items: center; justify-content: center;
+                 min-height: 100%; color: #6f6f6f; font-size: 10px; white-space: nowrap; overflow: hidden; }
+    .big .pre-block { border-radius: 10px; font-size: 13px; }
+    .flag { position: absolute; top: -7px; left: -4px; font-size: 11px; font-style: normal; line-height: 1; filter: drop-shadow(0 1px 1px #000); }
+    .big .flag { font-size: 16px; top: -9px; left: -6px; }
     .n { font-size: 12px; color: #6f6f6f; font-weight: 600; }
     @media (min-width: 720px) { .grid { gap: 6px; } }
   `,
@@ -46,15 +56,38 @@ export class DayGrid {
   /** особистий перший день: клітинки до нього — «ще не в потоці», а не пропуски */
   startDay = input(1);
 
+  /** скільки днів до приходу (лише якщо за них немає відміток — інакше показуємо як є) */
+  pre = computed(() => {
+    const sd = Math.max(1, this.startDay());
+    return this.days().slice(0, sd - 1).some(Boolean) ? 0 : sd - 1;
+  });
+
+  /** дні до приходу — один пунктирний блок «дні 1–12 · до старту», порізаний по рядках сітки */
+  preChunks = computed(() => {
+    const n = this.pre(), cols = this.big() ? 6 : 10;
+    const out: { span: number; label: string }[] = [];
+    for (let i = 0; i < n; ) {
+      const span = Math.min(n - i, cols - (i % cols));
+      out.push({ span, label: '' });
+      i += span;
+    }
+    if (out.length) {
+      const best = out.reduce((a, b) => (b.span > a.span ? b : a));
+      const range = n === 1 ? 'день 1' : `дні 1–${n}`;
+      best.label = best.span >= 5 ? `${range} · до старту` : best.span >= 3 ? 'до старту' : '';
+    }
+    return out;
+  });
+  preTitle = computed(() => `Дні 1–${this.pre()}: людини ще не було в потоці — це не пропуски`);
+
   cells = computed(() => {
-    const cur = this.currentDay();
-    return this.days().map((s, i) => {
-      const day = i + 1;
-      const pre = !s && day < this.startDay();
-      let cls = s ?? (pre ? 'pre' : day < cur ? 'empty' : day === cur ? 'empty' : 'future');
-      const label = s === 'done' ? 'зроблено' : s === 'min' ? 'мінімум — зараховано ✓' : s === 'miss' ? 'пропуск' : pre ? 'ще не в потоці' : day <= cur ? 'без відмітки' : 'попереду';
+    const cur = this.currentDay(), from = this.pre();
+    return this.days().slice(from).map((s, j) => {
+      const day = from + j + 1;
+      let cls: string = s ?? (day <= cur ? 'empty' : 'future');
+      const label = s === 'done' ? 'зроблено' : s === 'min' ? 'мінімум — зараховано ✓' : s === 'miss' ? 'пропуск' : day <= cur ? 'без відмітки' : 'попереду';
       if (day === cur) cls += ' today';
-      return { cls, label };
+      return { day, cls, label, start: from > 0 && j === 0 };
     });
   });
 
