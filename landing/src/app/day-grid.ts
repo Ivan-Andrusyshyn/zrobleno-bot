@@ -7,7 +7,7 @@ import { DayStatus } from './models';
   template: `
     <ol class="grid" [class.big]="big()" [attr.aria-label]="'Прогрес: ' + summary()">
       @for (c of preChunks(); track $index) {
-        <li class="pre-block" [style.grid-column]="'span ' + c.span" [attr.title]="preTitle()">
+        <li class="pre-block" [style.grid-column]="'span ' + c.span" [style.grid-row]="c.rows > 1 ? 'span ' + c.rows : null" [attr.title]="preTitle()">
           @if (c.label) { <span>{{ c.label }}</span> }
         </li>
       }
@@ -26,7 +26,7 @@ import { DayStatus } from './models';
     </ol>
   `,
   styles: `
-    .grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; }
+    .grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(10, 1fr); grid-auto-rows: 1fr; gap: 5px; }
     .grid.big { grid-template-columns: repeat(6, 1fr); gap: 8px; }
     .cell { aspect-ratio: 1; border-radius: 6px; background: #1d1d1d; display: grid; place-items: center; position: relative; }
     .big .cell { border-radius: 10px; }
@@ -65,14 +65,12 @@ export class DayGrid {
   /** дні до приходу — один пунктирний блок «дні 1–12 · до старту», порізаний по рядках сітки */
   preChunks = computed(() => {
     const n = this.pre(), cols = this.big() ? 6 : 10;
-    const out: { span: number; label: string }[] = [];
-    for (let i = 0; i < n; ) {
-      const span = Math.min(n - i, cols - (i % cols));
-      out.push({ span, label: '' });
-      i += span;
-    }
+    const out: { span: number; rows: number; label: string }[] = [];
+    const full = Math.floor(n / cols); // цілі ряди «до старту» — одним високим блоком
+    if (full) out.push({ span: cols, rows: full, label: '' });
+    if (n % cols) out.push({ span: n % cols, rows: 1, label: '' });
     if (out.length) {
-      const best = out.reduce((a, b) => (b.span > a.span ? b : a));
+      const best = out.reduce((a, b) => (b.span * b.rows > a.span * a.rows ? b : a));
       const range = n === 1 ? 'день 1' : `дні 1–${n}`;
       best.label = best.span >= 5 ? `${range} · до старту` : best.span >= 3 ? 'до старту' : '';
     }
