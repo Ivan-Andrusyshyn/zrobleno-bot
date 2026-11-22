@@ -6,9 +6,13 @@ import { DayStatus } from './models';
   selector: 'app-day-grid',
   template: `
     <ol class="grid" [class.big]="big()" [attr.aria-label]="'Прогрес: ' + summary()">
-      @for (c of preChunks(); track $index) {
-        <li class="pre-block" [style.grid-column]="'span ' + c.span" [style.grid-row]="c.rows > 1 ? 'span ' + c.rows : null" [attr.title]="preTitle()">
-          @if (c.label) { <span>{{ c.label }}</span> }
+      <!-- дні до приходу: звичайні (прозорі) клітинки, щоб сітка мала ту саму геометрію, що й у всіх;
+           поверх першої клітинки кожного шматка — пунктирна рамка на весь шматок -->
+      @for (g of ghosts(); track $index) {
+        <li class="cell ghost" [attr.title]="preTitle()">
+          @if (g) {
+            <span class="pre-box" [style]="{ '--n': g.span, '--r': g.rows }">{{ g.label }}</span>
+          }
         </li>
       }
       @for (s of cells(); track s.day) {
@@ -26,8 +30,8 @@ import { DayStatus } from './models';
     </ol>
   `,
   styles: `
-    .grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(10, 1fr); grid-auto-rows: 1fr; gap: 5px; }
-    .grid.big { grid-template-columns: repeat(6, 1fr); gap: 8px; }
+    .grid { --g: 5px; list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(10, 1fr); gap: var(--g); }
+    .grid.big { --g: 8px; grid-template-columns: repeat(6, 1fr); }
     .cell { aspect-ratio: 1; border-radius: 6px; background: #1d1d1d; display: grid; place-items: center; position: relative; }
     .big .cell { border-radius: 10px; }
     .cell svg { width: 70%; height: 70%; fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
@@ -40,13 +44,16 @@ import { DayStatus } from './models';
     .empty { background: #141414; box-shadow: inset 0 0 0 1px #2a2a2a; }
     .future { background: #0e0e0e; box-shadow: inset 0 0 0 1px #1c1c1c; }
     .today { box-shadow: 0 0 0 2px #fff; }
-    .pre-block { border-radius: 6px; border: 1px dashed #2e2e2e; display: flex; align-items: center; justify-content: center;
-                 min-height: 100%; color: #6f6f6f; font-size: 10px; white-space: nowrap; overflow: hidden; }
-    .big .pre-block { border-radius: 10px; font-size: 13px; }
+    .ghost { background: none; overflow: visible; }
+    .pre-box { position: absolute; left: 0; top: 0; z-index: 1; box-sizing: border-box; pointer-events: none;
+               width: calc(var(--n) * 100% + (var(--n) - 1) * var(--g)); height: calc(var(--r) * 100% + (var(--r) - 1) * var(--g));
+               border: 1px dashed #2e2e2e; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+               color: #6f6f6f; font-size: 10px; white-space: nowrap; overflow: hidden; }
+    .big .pre-box { border-radius: 10px; font-size: 13px; }
     .flag { position: absolute; top: -7px; left: -4px; font-size: 11px; font-style: normal; line-height: 1; filter: drop-shadow(0 1px 1px #000); }
     .big .flag { font-size: 16px; top: -9px; left: -6px; }
     .n { font-size: 12px; color: #6f6f6f; font-weight: 600; }
-    @media (min-width: 720px) { .grid { gap: 6px; } }
+    @media (min-width: 720px) { .grid:not(.big) { --g: 6px; } }
   `,
 })
 export class DayGrid {
@@ -73,6 +80,13 @@ export class DayGrid {
       const best = out.reduce((a, b) => (b.span * b.rows > a.span * a.rows ? b : a));
       best.label = best.span >= 5 ? `Старт з ${n + 1}-го дня →` : best.span >= 3 ? `з ${n + 1}-го →` : '';
     }
+    return out;
+  });
+  /** по клітинці на кожен день до приходу; у першій клітинці шматка — його рамка */
+  ghosts = computed(() => {
+    const out: ({ span: number; rows: number; label: string } | null)[] = Array(this.pre()).fill(null);
+    let i = 0;
+    for (const c of this.preChunks()) { out[i] = c; i += c.span * c.rows; }
     return out;
   });
   preTitle = computed(() => `Старт з ${this.pre() + 1}-го дня: дні 1–${this.pre()} людини ще не було в потоці — це не пропуски`);
