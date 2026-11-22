@@ -71,12 +71,11 @@ export class DayGrid {
     if (n % cols) out.push({ span: n % cols, rows: 1, label: '' });
     if (out.length) {
       const best = out.reduce((a, b) => (b.span * b.rows > a.span * a.rows ? b : a));
-      const range = n === 1 ? 'день 1' : `дні 1–${n}`;
-      best.label = best.span >= 5 ? `${range} · до старту` : best.span >= 3 ? 'до старту' : '';
+      best.label = best.span >= 5 ? `Старт з ${n + 1}-го дня →` : best.span >= 3 ? `з ${n + 1}-го →` : '';
     }
     return out;
   });
-  preTitle = computed(() => `Дні 1–${this.pre()}: людини ще не було в потоці — це не пропуски`);
+  preTitle = computed(() => `Старт з ${this.pre() + 1}-го дня: дні 1–${this.pre()} людини ще не було в потоці — це не пропуски`);
 
   cells = computed(() => {
     const cur = this.currentDay(), from = this.pre();
