@@ -60,7 +60,7 @@ test("розклад: публікує раз, у день 8 після 18:00, �
   await upd({ message_id: 1, chat: { id: 42, type: "private" }, from: { id: 42 }, text: "/date 10.11.2026" });
   for (let d = 1; d <= 8; d++) {
     await upd({ message_id: d * 100, chat: { id: G, type: "supergroup" }, is_automatic_forward: true, sender_chat: { id: -1 }, text: `День ${d}` });
-    if (d <= 7) await upd({ message_id: d * 100 + 1, message_thread_id: d * 100, chat: { id: G, type: "supergroup" }, from: { id: 7, first_name: "Оля" }, text: "✅" });
+    if (d <= 7) await upd({ date: Date.UTC(2026, 10, 9 + d, 8) / 1000, message_id: d * 100 + 1, message_thread_id: d * 100, chat: { id: G, type: "supergroup" }, from: { id: 7, first_name: "Оля" }, text: "✅" });
   }
 
   const at = (iso) => runWeekly(env, { now: new Date(iso), api });
@@ -149,7 +149,7 @@ test("ручний /week post позначає тиждень — автомат
   await upd({ message_id: 1, chat: { id: 42, type: "private" }, from: { id: 42 }, text: "/admin c" });
   await handleUpdate({ update_id: ++uid, my_chat_member: { chat: { id: G, type: "supergroup", title: "Ч" }, new_chat_member: { status: "administrator" } } }, env, api);
   await upd({ message_id: 2, chat: { id: 42, type: "private" }, from: { id: 42 }, text: "/date 10.11.2026" });
-  await upd({ message_id: 10, message_thread_id: 5, chat: { id: G, type: "supergroup" }, from: { id: 7, first_name: "Оля" }, text: "День 1 ✅" });
+  await upd({ date: Date.UTC(2026, 10, 10, 8) / 1000, message_id: 10, message_thread_id: 5, chat: { id: G, type: "supergroup" }, from: { id: 7, first_name: "Оля" }, text: "День 1 ✅" });
   await upd({ message_id: 3, chat: { id: 42, type: "private" }, from: { id: 42 }, text: "/week post 1" });
   assert.match(sent.at(-1).text, /Опубліковано підсумок 1-го тижня/);
   const r = await runWeekly(env, { now: new Date("2026-11-17T17:00:00Z"), api });

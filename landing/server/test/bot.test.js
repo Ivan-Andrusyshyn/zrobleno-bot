@@ -73,11 +73,11 @@ test("банер без підпису: день за датою публіка�
   // пост 12 листопада о 9:00 за Києвом, без тексту → день 3
   const t = Math.floor(Date.parse("2026-11-12T07:00:00Z") / 1000);
   await upd("message", { message_id: 300, date: t, chat: { id: G, type: "supergroup" }, is_automatic_forward: true, sender_chat: { id: -1001, type: "channel" }, photo: [{}] });
-  await comment("message", 301, 300, { id: 11, is_bot: false, first_name: "Ірина" }, "✅");
+  await upd("message", { date: t, message_id: 301, message_thread_id: 300, chat: { id: G, type: "supergroup" }, from: { id: 11, is_bot: false, first_name: "Ірина" }, text: "✅" });
   // пост 11 листопада о 23:30 за Києвом (21:30 UTC) → день 2
   const t2 = Math.floor(Date.parse("2026-11-11T21:30:00Z") / 1000);
   await upd("message", { message_id: 310, date: t2, chat: { id: G, type: "supergroup" }, is_automatic_forward: true, sender_chat: { id: -1001, type: "channel" }, photo: [{}] });
-  await comment("message", 311, 310, { id: 11, is_bot: false, first_name: "Ірина" }, "🟨 — мінімум");
+  await upd("message", { date: t, message_id: 311, message_thread_id: 310, chat: { id: G, type: "supergroup" }, from: { id: 11, is_bot: false, first_name: "Ірина" }, text: "🟨 — мінімум" }); // пізня відмітка за вчора (день 2) — дозволено
   const p = (await participantsPayload(env)).participants.find((x) => x.name === "Ірина");
   assert.equal(p.days[2], "done");
   assert.equal(p.days[1], "min");

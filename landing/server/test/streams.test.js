@@ -376,3 +376,61 @@ test("➕ Додати учасника: переслане повідомлен
     assert.equal((await participantsPayload(env)).participants.find((x) => x.name === "Ніна").startDay, 12);
   } finally { globalThis.Date = RealDate; }
 });
+
+test("доданий на 13-й день не може відмітити «День 1»; вчорашній (12-й) — можна; учасники з першого дня — як раніше", async () => {
+  useClock();
+  try {
+    const { env, sent, upd, addBot, pm, post, comment, click } = await setup();
+    await addBot(-100, "Основна");
+    await pm("/date 10.11.2026");
+    at("2026-11-10T08:00:00Z");
+    await post(-100, 100, "День 1");
+    await comment(-100, 101, 100, "✅", { id: 1, first_name: "Аліна" });
+    at("2026-11-21T08:00:00Z"); await post(-100, 1200, "День 12");
+    at("2026-11-22T08:00:00Z"); await post(-100, 1300, "День 13");
+    // адмін додає Юлію на 13-й день
+    await click("a:1");
+    await upd({ message: { date: sec(), message_id: 7000, chat: { id: 42, type: "private" }, from: { id: 42 }, forward_origin: { type: "user", sender_user: { id: 5, first_name: "Юлія" } }, text: "привіт" } });
+    await pm("1. Юлія\n2. Зарядка\n3. 20 хв\n4. Здоровʼя");
+    await click("ay:1");
+    at("2026-11-22T09:45:00Z");
+    await comment(-100, 1301, 100, "✅ зроблено", { id: 5, first_name: "Юлія" }); // під постом «День 1» — ні
+    const base = await store(env.DB);
+    assert.match((await base.all()).lastSkip.reason, /день 1 раніше, ніж людина прийшла в потік \(день 13\)/);
+    await comment(-100, 1302, 1200, "✅", { id: 5, first_name: "Юлія" }); // вчора — так
+    await comment(-100, 1303, 1300, "✅", { id: 5, first_name: "Юлія" });
+    const p = (await participantsPayload(env)).participants;
+    const j = p.find((x) => x.name === "Юлія");
+    assert.equal(j.days[0], null);
+    assert.equal(j.days[11], "done");
+    assert.equal(j.days[12], "done");
+    assert.equal(j.startDay, 12);
+    // Аліна з першого дня може досі дописати пропущений 1-й? — так, вона в потоці з 1-го
+    await comment(-100, 1304, 100, "🟨", { id: 1, first_name: "Аліна" });
+    assert.equal((await participantsPayload(env)).participants.find((x) => x.name === "Аліна").days[0], "min");
+  } finally { globalThis.Date = RealDate; }
+});
+
+test("разове прибирання: відмітки до дня приходу в доданих з 21.11 видаляються; старих учасників не чіпає; лише раз", async () => {
+  __resetSchemaForTests();
+  const { fakeD1: f } = await import("./fake-d1.js");
+  const DB = f();
+  const base = await store(DB);
+  const sid = await base.createStream({ name: "Листопад 2026", groupId: "-1", groupTitle: "Г", startDate: "2026-11-10" });
+  const v = base.forStream(await base.stream(sid));
+  // стара учасниця: прийшла 12.11 (день 3), дописала день 1 — не чіпаємо (joined до 21.11)
+  globalThis.Date = class extends RealDate { constructor(...a) { super(...(a.length ? a : [RealDate.parse("2026-11-12T08:00:00Z")])); } static now() { return RealDate.parse("2026-11-12T08:00:00Z"); } };
+  await v.touchParticipant(1, "Аліна"); await v.saveCheckin(1, 1, "done", null, "✅", 1);
+  // Юлія: додана 22.11 (день 13), «День 1» + «День 13»
+  globalThis.Date = class extends RealDate { constructor(...a) { super(...(a.length ? a : [RealDate.parse("2026-11-22T09:45:00Z")])); } static now() { return RealDate.parse("2026-11-22T09:45:00Z"); } };
+  await v.touchParticipant(5, "Юлія"); await v.saveCheckin(5, 1, "done", null, "✅", 2); await v.saveCheckin(5, 13, "done", null, "✅", 3);
+  const dayOf = (start, at) => Math.round((RealDate.parse(at.slice(0, 10)) - RealDate.parse(start)) / 864e5) + 1;
+  assert.equal(await base.cleanupEarlyCheckinsOnce(dayOf), 1);
+  assert.equal(await base.cleanupEarlyCheckinsOnce(dayOf), null, "вдруге не запускається");
+  const { marks } = await v.participantsWithCheckins();
+  const has = (u, d) => marks.some((m) => m.userId === u && m.day === d);
+  assert.ok(has(1, 1), "Аліна не зачеплена");
+  assert.ok(!has(5, 1), "«День 1» Юлії прибрано");
+  assert.ok(has(5, 13));
+  globalThis.Date = RealDate;
+});

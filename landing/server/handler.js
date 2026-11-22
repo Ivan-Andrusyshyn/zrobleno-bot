@@ -61,6 +61,7 @@ export async function currentView(base, env) {
 
 export async function participantsPayload(env) {
   const base = await store(env.DB);
+  await base.cleanupEarlyCheckinsOnce(joinDayOf(env)).catch((e) => console.error("cleanup", e));
   const db = await currentView(base, env);
   if (!db) return { challenge: { startDate: null, currentDay: 0, totalDays: TOTAL_DAYS }, participants: [] };
   const s = await db.all();
@@ -98,8 +99,12 @@ async function skip(db, reason, m) {
 }
 
 // ---------- Оновлення від Telegram ----------
+/** День потоку, на який припадає момент приходу людини (joined_at) */
+const joinDayOf = (env) => (startDate, joinedAt) => dayNumber(startDate, todayYmd(new Date(joinedAt), TIMEZONE(env)));
+
 export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
   let db = await store(env.DB);
+  await db.cleanupEarlyCheckinsOnce(joinDayOf(env)).catch((e) => console.error("cleanup", e));
 
   // Кнопки меню адміна
   if (u.callback_query) return handleCallback(u.callback_query, db, api, env);
@@ -184,6 +189,14 @@ export async function handleUpdate(u, env, api = tg(env.BOT_TOKEN)) {
     }
     if (!day) return skip(db, `не вдалося визначити день (пост: ${thread?.kind ?? "невідомий"}, старт: ${s.startDate ?? "не задано"})`, m);
     if (st.status === "closed") return skip(gdb, `потік «${st.name}» уже закрито`, m);
+    // Не раніше, ніж за день до приходу в потік (щоб людина, яку додали на 13-й день, не відмітила «День 1»).
+    // Учасники з першого дня цього не помітять; «вчора» дозволено (прийшла після півночі — відмічає вчорашній).
+    if (s.startDate) {
+      const mem = await db.member(m.from.id);
+      const msgDay = joinDayOf(env)(s.startDate, (m.date || Date.now() / 1000) * 1000); // день, коли написано коментар
+      const joinDay = mem?.inStream ? Math.min(msgDay, joinDayOf(env)(s.startDate, mem.joinedAt)) : msgDay;
+      if (day < joinDay - 1) return skip(gdb, `день ${day} раніше, ніж людина прийшла в потік (день ${joinDay})`, m);
+    }
     await db.touchParticipant(m.from.id, tgName);
     // медалі: перед першою відміткою після запуску — тихо запамʼятати вже наявні (без «залпу»)
     await seedAwards(db, s, env).catch((e) => console.error("medals seed", e));

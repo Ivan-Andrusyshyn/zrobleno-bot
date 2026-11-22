@@ -194,6 +194,31 @@ export async function store(db) {
     async setHidden(userId, hidden) {
       await db.prepare("UPDATE participants SET hidden = ? WHERE user_id = ?").bind(hidden ? 1 : 0, userId).run();
     },
+    /**
+     * Разове прибирання (22.11.2026): відмітки за дні раніше, ніж «день приходу − 1», у тих, кого додали з 21.11
+     * (кнопка «➕ Додати учасника»). Випадок: людину додали на 13-й день, а вона відмітилась під постом «День 1».
+     * Старих учасників не чіпає (joined_at < since). Повторно не запускається (прапорець у settings).
+     */
+    async cleanupEarlyCheckinsOnce(dayOf, since = "2026-11-21T00:00:00.000Z", flag = "earlyCleanup1") {
+      const g = await this.all();
+      if (g[flag]) return null;
+      let removed = 0;
+      for (const st of await this.streams()) {
+        if (!st.startDate) continue;
+        const { results } = await db.prepare("SELECT user_id AS userId, joined_at AS joinedAt FROM stream_members WHERE stream_id = ? AND joined_at >= ?").bind(st.id, since).all();
+        for (const r of results) {
+          const minDay = dayOf(st.startDate, r.joinedAt) - 1;
+          if (minDay <= 1) continue;
+          const c = await db.prepare("SELECT COUNT(*) AS n FROM stream_checkins WHERE stream_id = ? AND user_id = ? AND day < ?").bind(st.id, r.userId, minDay).first();
+          if (!c?.n) continue;
+          await db.prepare("DELETE FROM stream_checkins WHERE stream_id = ? AND user_id = ? AND day < ?").bind(st.id, r.userId, minDay).run();
+          removed += c.n;
+          if (st.id === 1) await db.prepare("DELETE FROM checkins WHERE user_id = ? AND day < ?").bind(r.userId, minDay).run();
+        }
+      }
+      await this.set({ [flag]: { at: now(), removed } });
+      return removed;
+    },
     /** Скільки потоків людина пройшла (для титулів) */
     async finishedCounts() {
       const { results } = await db.prepare("SELECT user_id AS userId, COUNT(*) AS n FROM stream_members WHERE finished = 1 GROUP BY user_id").all();
